@@ -49,6 +49,16 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(_IMPORT_ERROR.encode("utf-8"))
             print(_IMPORT_ERROR)
             return
+        missing = []
+        if not os.getenv("TELEGRAM_TOKEN"):
+            missing.append("TELEGRAM_TOKEN")
+        if missing:
+            msg = f"missing env: {', '.join(missing)}"
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(msg.encode("utf-8"))
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
