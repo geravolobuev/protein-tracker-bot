@@ -2,55 +2,77 @@ import os
 import asyncio
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from supabase import create_client
+import httpx
 
 _MSK = ZoneInfo("Europe/Moscow")
 
 
-def _get_client():
+def _get_config():
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
         raise RuntimeError("SUPABASE_URL или SUPABASE_KEY не заданы")
-    return create_client(url, key)
+    return url.rstrip("/"), key
+
+
+def _headers(key: str):
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
 
 
 async def get_user(telegram_user_id: int):
     def _run():
-        client = _get_client()
-        return (
-            client.table("users")
-            .select("*")
-            .eq("telegram_user_id", telegram_user_id)
-            .limit(1)
-            .execute()
-        )
+        base, key = _get_config()
+        url = f"{base}/rest/v1/users"
+        params = {
+            "select": "*",
+            "telegram_user_id": f"eq.{telegram_user_id}",
+            "limit": 1,
+        }
+        with httpx.Client(timeout=10) as client:
+            res = client.get(url, headers=_headers(key), params=params)
+            res.raise_for_status()
+            return res.json()
 
     res = await asyncio.to_thread(_run)
-    return res.data[0] if res.data else None
+    return res[0] if res else None
 
 
 async def create_user(telegram_user_id: int, protein_min: int, protein_max: int):
     def _run():
-        client = _get_client()
+        base, key = _get_config()
+        url = f"{base}/rest/v1/users"
         payload = {
             "telegram_user_id": telegram_user_id,
             "protein_min": protein_min,
             "protein_max": protein_max,
         }
-        return client.table("users").insert(payload).execute()
+        headers = _headers(key)
+        headers["Prefer"] = "return=representation"
+        with httpx.Client(timeout=10) as client:
+            res = client.post(url, headers=headers, json=payload)
+            res.raise_for_status()
+            return res.json()
 
     res = await asyncio.to_thread(_run)
-    return res.data[0] if res.data else None
+    return res[0] if res else None
 
 
 async def get_all_users():
     def _run():
-        client = _get_client()
-        return client.table("users").select("*").execute()
+        base, key = _get_config()
+        url = f"{base}/rest/v1/users"
+        params = {"select": "*"}
+        with httpx.Client(timeout=10) as client:
+            res = client.get(url, headers=_headers(key), params=params)
+            res.raise_for_status()
+            return res.json()
 
     res = await asyncio.to_thread(_run)
-    return res.data or []
+    return res or []
 
 
 async def add_meal(
@@ -60,17 +82,23 @@ async def add_meal(
     user_id: str | None = None,
 ):
     def _run():
-        client = _get_client()
+        base, key = _get_config()
+        url = f"{base}/rest/v1/meals"
         payload = {
             "telegram_user_id": telegram_user_id,
             "meal_description": meal_description,
             "protein_grams": protein_grams,
             "user_id": user_id,
         }
-        return client.table("meals").insert(payload).execute()
+        headers = _headers(key)
+        headers["Prefer"] = "return=representation"
+        with httpx.Client(timeout=10) as client:
+            res = client.post(url, headers=headers, json=payload)
+            res.raise_for_status()
+            return res.json()
 
     res = await asyncio.to_thread(_run)
-    return res.data[0] if res.data else None
+    return res[0] if res else None
 
 
 def _today_range_utc():
@@ -86,34 +114,42 @@ async def get_today_meals(telegram_user_id: int):
     start_iso, end_iso = _today_range_utc()
 
     def _run():
-        client = _get_client()
-        return (
-            client.table("meals")
-            .select("*")
-            .eq("telegram_user_id", telegram_user_id)
-            .gte("created_at", start_iso)
-            .lte("created_at", end_iso)
-            .order("created_at")
-            .execute()
-        )
+        base, key = _get_config()
+        url = f"{base}/rest/v1/meals"
+        params = {
+            "select": "*",
+            "telegram_user_id": f"eq.{telegram_user_id}",
+            "created_at": f"gte.{start_iso}",
+            "created_at": f"lte.{end_iso}",
+            "order": "created_at.asc",
+        }
+        with httpx.Client(timeout=10) as client:
+            res = client.get(url, headers=_headers(key), params=params)
+            res.raise_for_status()
+            return res.json()
 
     res = await asyncio.to_thread(_run)
-    return res.data or []
+    return res or []
 
 
 async def delete_today_meals(telegram_user_id: int):
     start_iso, end_iso = _today_range_utc()
 
     def _run():
-        client = _get_client()
-        return (
-            client.table("meals")
-            .delete()
-            .eq("telegram_user_id", telegram_user_id)
-            .gte("created_at", start_iso)
-            .lte("created_at", end_iso)
-            .execute()
-        )
+        base, key = _get_config()
+        url = f"{base}/rest/v1/meals"
+        params = {
+            "telegram_user_id": f"eq.{telegram_user_id}",
+            "created_at": f"gte.{start_iso}",
+            "created_at": f"lte.{end_iso}",
+        }
+        headers = _headers(key)
+        headers["Prefer"] = "return=representation"
+        with httpx.Client(timeout=10) as client:
+            res = client.delete(url, headers=headers, params=params)
+            res.raise_for_status()
+            return res.json()
 
     res = await asyncio.to_thread(_run)
-    return res.data or []
+    return res or []
+
