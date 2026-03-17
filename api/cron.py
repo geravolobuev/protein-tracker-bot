@@ -1,5 +1,6 @@
 import os
 import asyncio
+from http.server import BaseHTTPRequestHandler
 from telegram import Bot
 from bot import database as db
 
@@ -31,10 +32,16 @@ async def _send_summaries():
             continue
 
 
-async def handler(request):
-    if request.method != "POST":
-        return {"statusCode": 200, "body": "ok"}
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"ok")
 
-    await _send_summaries()
-    return {"statusCode": 200, "body": "ok"}
-
+    def do_POST(self):
+        asyncio.run(_send_summaries())
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"ok")

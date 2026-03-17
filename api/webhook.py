@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from http.server import BaseHTTPRequestHandler
 from telegram import Update
 from bot.handlers import build_application
 
@@ -27,38 +28,32 @@ async def _get_app():
         return _app
 
 
-async def _get_update_json(request):
-    if hasattr(request, "json"):
-        data = request.json
-        if callable(data):
-            data = data()
-        if asyncio.iscoroutine(data):
-            data = await data
-        if isinstance(data, dict):
-            return data
-    if hasattr(request, "get_json"):
-        data = request.get_json()
-        if asyncio.iscoroutine(data):
-            data = await data
-        return data
-    if hasattr(request, "body"):
-        body = request.body
-        if asyncio.iscoroutine(body):
-            body = await body
-        if isinstance(body, (bytes, bytearray)):
-            return json.loads(body)
-        if isinstance(body, str):
-            return json.loads(body)
-    raise ValueError("Не удалось прочитать update")
-
-
-async def handler(request):
-    if request.method != "POST":
-        return {"statusCode": 200, "body": "ok"}
-
+async def _handle_update(data: dict):
     app = await _get_app()
-    data = await _get_update_json(request)
     update = Update.de_json(data, app.bot)
     await app.process_update(update)
-    return {"statusCode": 200, "body": "ok"}
 
+
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"bad request")
+            return
+
+        asyncio.run(_handle_update(data))
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"ok")
