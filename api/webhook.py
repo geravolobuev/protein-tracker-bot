@@ -1,9 +1,15 @@
 import os
 import json
 import asyncio
+import traceback
 from http.server import BaseHTTPRequestHandler
 from telegram import Update
-from bot.handlers import build_application
+
+_IMPORT_ERROR = None
+try:
+    from bot.handlers import build_application
+except Exception:
+    _IMPORT_ERROR = traceback.format_exc()
 
 _app = None
 _app_lock = asyncio.Lock()
@@ -36,12 +42,26 @@ async def _handle_update(data: dict):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if _IMPORT_ERROR:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(_IMPORT_ERROR.encode("utf-8"))
+            print(_IMPORT_ERROR)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"ok")
 
     def do_POST(self):
+        if _IMPORT_ERROR:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(_IMPORT_ERROR.encode("utf-8"))
+            print(_IMPORT_ERROR)
+            return
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length) if length else b"{}"
         try:
@@ -52,7 +72,16 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(b"bad request")
             return
 
-        asyncio.run(_handle_update(data))
+        try:
+            asyncio.run(_handle_update(data))
+        except Exception:
+            err = traceback.format_exc()
+            print(err)
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(err.encode("utf-8"))
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()

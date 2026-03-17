@@ -1,8 +1,14 @@
 import os
 import asyncio
+import traceback
 from http.server import BaseHTTPRequestHandler
 from telegram import Bot
-from bot import database as db
+
+_IMPORT_ERROR = None
+try:
+    from bot import database as db
+except Exception:
+    _IMPORT_ERROR = traceback.format_exc()
 
 
 def _get_token():
@@ -34,13 +40,36 @@ async def _send_summaries():
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if _IMPORT_ERROR:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(_IMPORT_ERROR.encode("utf-8"))
+            print(_IMPORT_ERROR)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"ok")
 
     def do_POST(self):
-        asyncio.run(_send_summaries())
+        if _IMPORT_ERROR:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(_IMPORT_ERROR.encode("utf-8"))
+            print(_IMPORT_ERROR)
+            return
+        try:
+            asyncio.run(_send_summaries())
+        except Exception:
+            err = traceback.format_exc()
+            print(err)
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(err.encode("utf-8"))
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
