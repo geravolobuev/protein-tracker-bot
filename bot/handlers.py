@@ -100,14 +100,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
     image_bytes = await file.download_as_bytearray()
-    mime_type = file.file_path.split(".")[-1].lower()
-    mime = "image/jpeg" if mime_type in ["jpg", "jpeg"] else "image/png"
+    ext = ""
+    if file.file_path and "." in file.file_path:
+        ext = file.file_path.rsplit(".", 1)[-1].lower()
+    mime = "image/jpeg" if ext in ["jpg", "jpeg"] else "image/png"
 
     try:
         result = await asyncio.to_thread(
             gemini.analyze_meal_image, bytes(image_bytes), mime
         )
-    except Exception:
+    except Exception as e:
+        print(f"Gemini image error: {e}")
         await update.message.reply_text(
             "Не смог распознать еду. Опиши блюдо текстом."
         )
@@ -145,7 +148,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _analyze_and_store_meal(update: Update, source_text: str):
     try:
         result = await asyncio.to_thread(gemini.analyze_meal_text, source_text)
-    except Exception:
+    except Exception as e:
+        print(f"Gemini text error: {e}")
         await update.message.reply_text(
             "Не смог оценить. Опиши блюдо чуть подробнее."
         )

@@ -19,26 +19,46 @@ def _configure():
     genai.configure(api_key=api_key)
 
 
-def _model():
+def _model_json():
     _configure()
-    return genai.GenerativeModel("gemini-1.5-flash")
+    return genai.GenerativeModel(
+        "gemini-1.5-flash",
+        generation_config={
+            "temperature": 0.2,
+            "response_mime_type": "application/json",
+        },
+    )
+
+
+def _model_text():
+    _configure()
+    return genai.GenerativeModel(
+        "gemini-1.5-flash",
+        generation_config={
+            "temperature": 0.2,
+        },
+    )
 
 
 def _extract_json(text: str):
-    match = re.search(r"\{.*\}", text, re.DOTALL)
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z0-9]*", "", cleaned).strip()
+        cleaned = re.sub(r"```$", "", cleaned).strip()
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if not match:
         raise ValueError("JSON не найден")
     return json.loads(match.group(0))
 
 
 def analyze_meal_text(text: str):
-    model = _model()
+    model = _model_json()
     resp = model.generate_content([MEAL_PROMPT, text])
     return _extract_json(resp.text or "")
 
 
 def analyze_meal_image(image_bytes: bytes, mime_type: str):
-    model = _model()
+    model = _model_json()
     with tempfile.NamedTemporaryFile(suffix=_suffix_from_mime(mime_type)) as f:
         f.write(image_bytes)
         f.flush()
@@ -48,7 +68,7 @@ def analyze_meal_image(image_bytes: bytes, mime_type: str):
 
 
 def transcribe_audio(audio_bytes: bytes, mime_type: str):
-    model = _model()
+    model = _model_text()
     prompt = "Transcribe this voice message in Russian. Return plain text only."
     with tempfile.NamedTemporaryFile(suffix=_suffix_from_mime(mime_type)) as f:
         f.write(audio_bytes)
@@ -71,4 +91,3 @@ def _suffix_from_mime(mime_type: str):
     if mime_type == "audio/mpeg":
         return ".mp3"
     return ""
-
