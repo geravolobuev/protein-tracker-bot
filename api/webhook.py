@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import threading
 import traceback
 from http.server import BaseHTTPRequestHandler
 from telegram import Update
@@ -13,6 +14,9 @@ except Exception:
 
 _app = None
 _app_lock = asyncio.Lock()
+_loop = asyncio.new_event_loop()
+_loop_lock = threading.Lock()
+asyncio.set_event_loop(_loop)
 
 
 def _get_token():
@@ -20,6 +24,11 @@ def _get_token():
     if not token:
         raise RuntimeError("TELEGRAM_TOKEN не задан")
     return token
+
+
+def _run(coro):
+    with _loop_lock:
+        return _loop.run_until_complete(coro)
 
 
 async def _get_app():
@@ -83,7 +92,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            asyncio.run(_handle_update(data))
+            _run(_handle_update(data))
         except Exception:
             err = traceback.format_exc()
             print(err)

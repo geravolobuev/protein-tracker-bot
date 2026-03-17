@@ -1,5 +1,6 @@
 import os
 import asyncio
+import threading
 import traceback
 from http.server import BaseHTTPRequestHandler
 from telegram import Bot
@@ -61,7 +62,8 @@ class handler(BaseHTTPRequestHandler):
             print(_IMPORT_ERROR)
             return
         try:
-            asyncio.run(_send_summaries())
+            with _loop_lock:
+                _loop.run_until_complete(_send_summaries())
         except Exception:
             err = traceback.format_exc()
             print(err)
@@ -74,3 +76,6 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"ok")
+_loop = asyncio.new_event_loop()
+_loop_lock = threading.Lock()
+asyncio.set_event_loop(_loop)
