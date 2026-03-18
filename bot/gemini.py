@@ -19,10 +19,10 @@ def _configure():
     genai.configure(api_key=api_key)
 
 
-def _model_json():
+def _model_json(model_name: str):
     _configure()
     return genai.GenerativeModel(
-        "gemini-1.5-flash",
+        model_name,
         generation_config={
             "temperature": 0.2,
             "response_mime_type": "application/json",
@@ -30,14 +30,26 @@ def _model_json():
     )
 
 
-def _model_text():
+def _model_text(model_name: str):
     _configure()
     return genai.GenerativeModel(
-        "gemini-1.5-flash",
+        model_name,
         generation_config={
             "temperature": 0.2,
         },
     )
+
+
+def _candidate_models():
+    preferred = os.getenv("GEMINI_MODEL")
+    models = [
+        preferred,
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash-001",
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+    ]
+    return [m for m in models if m]
 
 
 def _extract_json(text: str):
@@ -53,12 +65,19 @@ def _extract_json(text: str):
 
 
 def analyze_meal_text(text: str):
-    model = _model_json()
-    try:
-        resp = model.generate_content([MEAL_PROMPT, text])
-    except Exception as e:
-        print(f"Gemini API error (text): {e!r}")
-        raise
+    resp = None
+    last_err = None
+    for name in _candidate_models():
+        try:
+            model = _model_json(name)
+            resp = model.generate_content([MEAL_PROMPT, text])
+            break
+        except Exception as e:
+            last_err = e
+            print(f"Gemini API error (text) model={name}: {e!r}")
+            continue
+    if resp is None and last_err:
+        raise last_err
     raw = resp.text or ""
     if not raw and getattr(resp, "candidates", None):
         try:
@@ -69,16 +88,23 @@ def analyze_meal_text(text: str):
 
 
 def analyze_meal_image(image_bytes: bytes, mime_type: str):
-    model = _model_json()
     with tempfile.NamedTemporaryFile(suffix=_suffix_from_mime(mime_type)) as f:
         f.write(image_bytes)
         f.flush()
         file_ref = genai.upload_file(f.name, mime_type=mime_type)
-        try:
-            resp = model.generate_content([MEAL_PROMPT, file_ref])
-        except Exception as e:
-            print(f"Gemini API error (image): {e!r}")
-            raise
+        resp = None
+        last_err = None
+        for name in _candidate_models():
+            try:
+                model = _model_json(name)
+                resp = model.generate_content([MEAL_PROMPT, file_ref])
+                break
+            except Exception as e:
+                last_err = e
+                print(f"Gemini API error (image) model={name}: {e!r}")
+                continue
+        if resp is None and last_err:
+            raise last_err
     raw = resp.text or ""
     if not raw and getattr(resp, "candidates", None):
         try:
@@ -89,7 +115,19 @@ def analyze_meal_image(image_bytes: bytes, mime_type: str):
 
 
 def transcribe_audio(audio_bytes: bytes, mime_type: str):
-    model = _model_text()
+    resp = None
+    last_err = None
+    model = None
+    for name in _candidate_models():
+        try:
+            model = _model_text(name)
+            break
+        except Exception as e:
+            last_err = e
+            print(f"Gemini API error (audio) model={name}: {e!r}")
+            continue
+    if last_err and model is None:
+        raise last_err
     prompt = "Transcribe this voice message in Russian. Return plain text only."
     with tempfile.NamedTemporaryFile(suffix=_suffix_from_mime(mime_type)) as f:
         f.write(audio_bytes)
