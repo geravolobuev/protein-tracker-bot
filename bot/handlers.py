@@ -1,7 +1,7 @@
 import os
 import re
 import asyncio
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -15,9 +15,10 @@ from . import database as db
 
 
 def build_application(token: str) -> Application:
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(_post_init).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("target", set_target))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("today", today))
     app.add_handler(CommandHandler("reset", reset_today))
@@ -27,6 +28,17 @@ def build_application(token: str) -> Application:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     return app
+
+
+async def _post_init(app: Application):
+    commands = [
+        BotCommand("start", "Начать"),
+        BotCommand("target", "Изменить цель"),
+        BotCommand("status", "Статус за день"),
+        BotCommand("today", "Лог за день"),
+        BotCommand("reset", "Обнулить день"),
+    ]
+    await app.bot.set_my_commands(commands)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,6 +83,26 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     comment = _comment_on_track(total, user["protein_min"], user["protein_max"])
     await update.message.reply_text(
         f"Сегодня: {total:.0f} г (цель {user['protein_min']}–{user['protein_max']}). {comment}"
+    )
+
+
+async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args or []).strip()
+    if not text:
+        await update.message.reply_text("Укажи цель в формате 140-180 г.")
+        return
+    parsed = _parse_target_range(text)
+    if not parsed:
+        await update.message.reply_text("Не понял. Формат: 140-180 г.")
+        return
+    protein_min, protein_max = parsed
+    user = await db.get_user(update.effective_user.id)
+    if not user:
+        await db.create_user(update.effective_user.id, protein_min, protein_max)
+    else:
+        await db.update_user(update.effective_user.id, protein_min, protein_max)
+    await update.message.reply_text(
+        f"Цель обновлена: {protein_min}–{protein_max} г."
     )
 
 

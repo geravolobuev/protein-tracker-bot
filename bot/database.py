@@ -61,6 +61,26 @@ async def create_user(telegram_user_id: int, protein_min: int, protein_max: int)
     return res[0] if res else None
 
 
+async def update_user(telegram_user_id: int, protein_min: int, protein_max: int):
+    def _run():
+        base, key = _get_config()
+        url = f"{base}/rest/v1/users"
+        payload = {
+            "protein_min": protein_min,
+            "protein_max": protein_max,
+        }
+        params = {"telegram_user_id": f"eq.{telegram_user_id}"}
+        headers = _headers(key)
+        headers["Prefer"] = "return=representation"
+        with httpx.Client(timeout=10) as client:
+            res = client.patch(url, headers=headers, params=params, json=payload)
+            res.raise_for_status()
+            return res.json()
+
+    res = await asyncio.to_thread(_run)
+    return res[0] if res else None
+
+
 async def get_all_users():
     def _run():
         base, key = _get_config()
@@ -152,4 +172,3 @@ async def delete_today_meals(telegram_user_id: int):
 
     res = await asyncio.to_thread(_run)
     return res or []
-
