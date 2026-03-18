@@ -18,6 +18,7 @@ def build_application(token: str) -> Application:
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("today", today))
     app.add_handler(CommandHandler("reset", reset_today))
 
@@ -55,6 +56,22 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = f"{user['protein_min']}–{user['protein_max']} г"
     text = "Сегодня:\n" + "\n".join(lines) + f"\nИтого: {total:.0f} г (цель {target})."
     await update.message.reply_text(text)
+
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = await db.get_user(update.effective_user.id)
+    if not user:
+        await update.message.reply_text(
+            "Сначала укажи цель по белку в формате 140-180 г."
+        )
+        return
+
+    meals = await db.get_today_meals(update.effective_user.id)
+    total = sum(float(m["protein_grams"]) for m in meals)
+    comment = _comment_on_track(total, user["protein_min"], user["protein_max"])
+    await update.message.reply_text(
+        f"Сегодня: {total:.0f} г (цель {user['protein_min']}–{user['protein_max']}). {comment}"
+    )
 
 
 async def reset_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,9 +161,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         transcript = await asyncio.to_thread(
             gemini.transcribe_audio, bytes(audio_bytes), mime
         )
-    except Exception:
+    except Exception as e:
+        msg = str(e) or e.__class__.__name__
+        print(f"Gemini audio error: {e!r}")
         await update.message.reply_text(
-            "Не смог разобрать голос. Опиши блюдо текстом."
+            f"Не смог разобрать голос. Ошибка: {msg}"
         )
         return
 
