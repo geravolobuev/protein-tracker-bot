@@ -114,9 +114,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gemini.analyze_meal_image, bytes(image_bytes), mime
         )
     except Exception as e:
-        print(f"Gemini image error: {e}")
+        msg = str(e) or e.__class__.__name__
+        print(f"Gemini image error: {e!r}")
         await update.message.reply_text(
-            "Не смог распознать еду. Опиши блюдо текстом."
+            f"Не смог распознать еду. Ошибка: {msg}"
         )
         return
 
@@ -159,9 +160,10 @@ async def _analyze_and_store_meal(update: Update, source_text: str):
     try:
         result = await asyncio.to_thread(gemini.analyze_meal_text, source_text)
     except Exception as e:
-        print(f"Gemini text error: {e}")
+        msg = str(e) or e.__class__.__name__
+        print(f"Gemini text error: {e!r}")
         await update.message.reply_text(
-            "Не смог оценить. Опиши блюдо чуть подробнее."
+            f"Не смог оценить. Ошибка: {msg}"
         )
         return
 
