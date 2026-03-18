@@ -1,3 +1,4 @@
+import os
 import re
 import asyncio
 from telegram import Update
@@ -96,6 +97,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Сначала укажи цель по белку в формате 140-180 г."
         )
         return
+    if not os.getenv("GEMINI_API_KEY"):
+        await update.message.reply_text("Ключ Gemini не задан.")
+        return
 
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
@@ -126,6 +130,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Сначала укажи цель по белку в формате 140-180 г."
         )
         return
+    if not os.getenv("GEMINI_API_KEY"):
+        await update.message.reply_text("Ключ Gemini не задан.")
+        return
 
     voice = update.message.voice
     file = await context.bot.get_file(voice.file_id)
@@ -146,6 +153,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _analyze_and_store_meal(update: Update, source_text: str):
+    if not os.getenv("GEMINI_API_KEY"):
+        await update.message.reply_text("Ключ Gemini не задан.")
+        return
     try:
         result = await asyncio.to_thread(gemini.analyze_meal_text, source_text)
     except Exception as e:

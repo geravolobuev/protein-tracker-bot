@@ -47,14 +47,25 @@ def _extract_json(text: str):
         cleaned = re.sub(r"```$", "", cleaned).strip()
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if not match:
+        print(f"Gemini raw response: {cleaned}")
         raise ValueError("JSON не найден")
     return json.loads(match.group(0))
 
 
 def analyze_meal_text(text: str):
     model = _model_json()
-    resp = model.generate_content([MEAL_PROMPT, text])
-    return _extract_json(resp.text or "")
+    try:
+        resp = model.generate_content([MEAL_PROMPT, text])
+    except Exception as e:
+        print(f"Gemini API error (text): {e!r}")
+        raise
+    raw = resp.text or ""
+    if not raw and getattr(resp, "candidates", None):
+        try:
+            raw = resp.candidates[0].content.parts[0].text or ""
+        except Exception:
+            pass
+    return _extract_json(raw)
 
 
 def analyze_meal_image(image_bytes: bytes, mime_type: str):
@@ -63,8 +74,18 @@ def analyze_meal_image(image_bytes: bytes, mime_type: str):
         f.write(image_bytes)
         f.flush()
         file_ref = genai.upload_file(f.name, mime_type=mime_type)
-        resp = model.generate_content([MEAL_PROMPT, file_ref])
-    return _extract_json(resp.text or "")
+        try:
+            resp = model.generate_content([MEAL_PROMPT, file_ref])
+        except Exception as e:
+            print(f"Gemini API error (image): {e!r}")
+            raise
+    raw = resp.text or ""
+    if not raw and getattr(resp, "candidates", None):
+        try:
+            raw = resp.candidates[0].content.parts[0].text or ""
+        except Exception:
+            pass
+    return _extract_json(raw)
 
 
 def transcribe_audio(audio_bytes: bytes, mime_type: str):
