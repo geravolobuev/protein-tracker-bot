@@ -1,8 +1,7 @@
 import os
 import re
 import asyncio
-from telegram import Update, BotCommand
-from telegram.ext import BotCommandScopeDefault, BotCommandScopeAllPrivateChats
+from telegram import Update, BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats
 from telegram.ext import (
     Application,
     CommandHandler,
