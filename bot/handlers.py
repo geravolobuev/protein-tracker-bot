@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 from telegram import Update, BotCommand
+from telegram.ext import BotCommandScopeDefault, BotCommandScopeAllPrivateChats
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -22,6 +23,7 @@ def build_application(token: str) -> Application:
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("today", today))
     app.add_handler(CommandHandler("reset", reset_today))
+    app.add_handler(CommandHandler("menu", refresh_menu))
 
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
@@ -37,8 +39,10 @@ async def _post_init(app: Application):
         BotCommand("status", "Статус за день"),
         BotCommand("today", "Лог за день"),
         BotCommand("reset", "Обнулить день"),
+        BotCommand("menu", "Обновить меню"),
     ]
-    await app.bot.set_my_commands(commands)
+    await app.bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+    await app.bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,6 +108,20 @@ async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Цель обновлена: {protein_min}–{protein_max} г."
     )
+
+
+async def refresh_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    commands = [
+        BotCommand("start", "Начать"),
+        BotCommand("target", "Изменить цель"),
+        BotCommand("status", "Статус за день"),
+        BotCommand("today", "Лог за день"),
+        BotCommand("reset", "Обнулить день"),
+        BotCommand("menu", "Обновить меню"),
+    ]
+    await context.application.bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+    await context.application.bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
+    await update.message.reply_text("Меню обновлено. Открой чат заново.")
 
 
 async def reset_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
