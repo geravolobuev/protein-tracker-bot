@@ -74,8 +74,8 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     total = sum(float(m["protein_grams"]) for m in meals)
     lines = [
-        f"{m['meal_description']} — {float(m['protein_grams']):.0f} г"
-        for m in meals
+        f"{i}. {m['meal_description']} — {float(m['protein_grams']):.0f} г"
+        for i, m in enumerate(meals, start=1)
     ]
     target = f"{user['protein_min']}–{user['protein_max']} г"
     text = "Сегодня:\n" + "\n".join(lines) + f"\nИтого: {total:.0f} г (цель {target})."
@@ -135,7 +135,10 @@ async def yesterday(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Вчера записей нет.")
         return
     total = sum(float(m["protein_grams"]) for m in meals)
-    lines = [f"{m['meal_description']} — {float(m['protein_grams']):.0f} г" for m in meals]
+    lines = [
+        f"{i}. {m['meal_description']} — {float(m['protein_grams']):.0f} г"
+        for i, m in enumerate(meals, start=1)
+    ]
     text = "Вчера:\n" + "\n".join(lines) + f"\nИтого: {total:.0f} г."
     await update.message.reply_text(text)
 
