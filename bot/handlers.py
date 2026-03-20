@@ -21,7 +21,6 @@ def build_application(token: str) -> Application:
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("target", set_target))
-    app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("yesterday", yesterday))
     app.add_handler(CommandHandler("week", week))
     app.add_handler(CommandHandler("timezone", set_timezone))
@@ -40,7 +39,6 @@ async def _post_init(app: Application):
     commands = [
         BotCommand("start", "Начать"),
         BotCommand("target", "Изменить цель"),
-        BotCommand("status", "Статус за день"),
         BotCommand("yesterday", "Лог за вчера"),
         BotCommand("week", "Лог за 7 дней"),
         BotCommand("timezone", "Часовой пояс"),
@@ -80,23 +78,6 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = f"{user['protein_min']}–{user['protein_max']} г"
     text = "Сегодня:\n" + "\n".join(lines) + f"\nИтого: {total:.0f} г (цель {target})."
     await update.message.reply_text(text)
-
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = await db.get_user(update.effective_user.id)
-    if not user:
-        await update.message.reply_text(
-            "Сначала укажи цель по белку в формате 140-180 г."
-        )
-        return
-
-    tz = _get_user_tz(user)
-    meals = await db.get_today_meals(update.effective_user.id, tz)
-    total = sum(float(m["protein_grams"]) for m in meals)
-    comment = _comment_on_track(total, user["protein_min"], user["protein_max"])
-    await update.message.reply_text(
-        f"Сегодня: {total:.0f} г (цель {user['protein_min']}–{user['protein_max']}). {comment}"
-    )
 
 
 async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -225,7 +206,6 @@ async def refresh_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     commands = [
         BotCommand("start", "Начать"),
         BotCommand("target", "Изменить цель"),
-        BotCommand("status", "Статус за день"),
         BotCommand("yesterday", "Лог за вчера"),
         BotCommand("week", "Лог за 7 дней"),
         BotCommand("timezone", "Часовой пояс"),
