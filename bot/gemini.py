@@ -11,6 +11,12 @@ MEAL_PROMPT = (
     "Be concise. If unsure, give a range as the middle value."
 )
 
+TIMEZONE_PROMPT = (
+    "Determine the IANA timezone for the given place. "
+    "Return JSON only: {\"timezone\": \"Area/City\"}. "
+    "If unsure, return {\"timezone\": null}."
+)
+
 
 def _configure():
     api_key = os.getenv("GEMINI_API_KEY")
@@ -138,6 +144,30 @@ def transcribe_audio(audio_bytes: bytes, mime_type: str):
     if not text:
         raise ValueError("Пустая транскрипция")
     return text
+
+
+def detect_timezone(place: str):
+    resp = None
+    last_err = None
+    for name in _candidate_models():
+        try:
+            model = _model_json(name)
+            resp = model.generate_content([TIMEZONE_PROMPT, place])
+            break
+        except Exception as e:
+            last_err = e
+            print(f"Gemini API error (tz) model={name}: {e!r}")
+            continue
+    if resp is None and last_err:
+        raise last_err
+    raw = resp.text or ""
+    if not raw and getattr(resp, "candidates", None):
+        try:
+            raw = resp.candidates[0].content.parts[0].text or ""
+        except Exception:
+            pass
+    data = _extract_json(raw)
+    return data.get("timezone")
 
 
 def _suffix_from_mime(mime_type: str):
