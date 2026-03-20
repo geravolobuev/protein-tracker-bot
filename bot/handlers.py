@@ -155,12 +155,32 @@ async def week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_day = end_day - timedelta(days=6)
     start = start_day.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
     end = end_day.replace(hour=23, minute=59, second=59, microsecond=999999).astimezone(timezone.utc)
-    meals = await db.get_meals_between(update.effective_user.id, start.isoformat(), end.isoformat())
-    if not meals:
+    meals = await db.get_meals_between(
+        update.effective_user.id, start.isoformat(), end.isoformat()
+    )
+    totals_by_day = {}
+    for m in meals:
+        created_at = m.get("created_at")
+        if not created_at:
+            continue
+        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00")).astimezone(tz)
+        key = dt.date().isoformat()
+        totals_by_day[key] = totals_by_day.get(key, 0.0) + float(m["protein_grams"])
+
+    days = []
+    for i in range(6, -1, -1):
+        day = (end_day - timedelta(days=i)).date()
+        key = day.isoformat()
+        total = totals_by_day.get(key, 0.0)
+        status = _day_status(total, user["protein_min"], user["protein_max"])
+        days.append(f"{day.strftime('%d.%m')}: {total:.0f} г — {status}")
+
+    if not any(totals_by_day.values()):
         await update.message.reply_text("За 7 дней записей нет.")
         return
-    total = sum(float(m["protein_grams"]) for m in meals)
-    await update.message.reply_text(f"За 7 дней: {total:.0f} г.")
+
+    text = "За 7 дней:\n" + "\n".join(days)
+    await update.message.reply_text(text)
 
 
 async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -365,6 +385,14 @@ def _comment_on_track(total: float, min_target: int, max_target: int) -> str:
     if total > max_target:
         return "Уже выше цели."
     return "В цели."
+
+
+def _day_status(total: float, min_target: int, max_target: int) -> str:
+    if total < min_target:
+        return "недобор"
+    if total > max_target:
+        return "перебор"
+    return "в цели"
 
 
 def _parse_target_range(text: str):
