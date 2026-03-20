@@ -4,6 +4,7 @@ import threading
 import traceback
 from http.server import BaseHTTPRequestHandler
 from telegram import Bot
+from zoneinfo import ZoneInfo
 
 _IMPORT_ERROR = None
 try:
@@ -31,7 +32,9 @@ async def _send_summaries():
     bot = Bot(_get_token())
     users = await db.get_all_users()
     for user in users:
-        meals = await db.get_today_meals(user["telegram_user_id"])
+        tz_name = (user.get("timezone") or "Europe/Moscow").strip()
+        tz = ZoneInfo(tz_name)
+        meals = await db.get_today_meals(user["telegram_user_id"], tz)
         text = _build_summary(meals, user)
         try:
             await bot.send_message(chat_id=user["telegram_user_id"], text=text)
