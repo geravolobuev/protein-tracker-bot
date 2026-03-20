@@ -136,13 +136,13 @@ async def get_today_meals(telegram_user_id: int):
     def _run():
         base, key = _get_config()
         url = f"{base}/rest/v1/meals"
-        params = {
-            "select": "*",
-            "telegram_user_id": f"eq.{telegram_user_id}",
-            "created_at": f"gte.{start_iso}",
-            "created_at": f"lte.{end_iso}",
-            "order": "created_at.asc",
-        }
+        params = [
+            ("select", "*"),
+            ("telegram_user_id", f"eq.{telegram_user_id}"),
+            ("created_at", f"gte.{start_iso}"),
+            ("created_at", f"lte.{end_iso}"),
+            ("order", "created_at.asc"),
+        ]
         with httpx.Client(timeout=10) as client:
             res = client.get(url, headers=_headers(key), params=params)
             res.raise_for_status()
@@ -158,11 +158,11 @@ async def delete_today_meals(telegram_user_id: int):
     def _run():
         base, key = _get_config()
         url = f"{base}/rest/v1/meals"
-        params = {
-            "telegram_user_id": f"eq.{telegram_user_id}",
-            "created_at": f"gte.{start_iso}",
-            "created_at": f"lte.{end_iso}",
-        }
+        params = [
+            ("telegram_user_id", f"eq.{telegram_user_id}"),
+            ("created_at", f"gte.{start_iso}"),
+            ("created_at", f"lte.{end_iso}"),
+        ]
         headers = _headers(key)
         headers["Prefer"] = "return=representation"
         with httpx.Client(timeout=10) as client:
