@@ -253,13 +253,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nums = [int(n) for n in re.findall(r"\d+", text)]
         if len(nums) != 1:
             await update.message.reply_text(
-                "Укажи цель по белку одним числом, например 160."
+                "Укажи цель по белку (и опционально калораж). Пример: 160 или 2500 160."
             )
             return
         protein_target = nums[0]
         await db.create_user(update.effective_user.id, protein_target, protein_target)
         await update.message.reply_text(
-            f"Цель сохранена: {protein_target} г."
+            f"☑️ Цель записана: {protein_target} грамм белка и — каллорий."
         )
         return
 
