@@ -52,7 +52,7 @@ async def _post_init(app: Application):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Укажи цель по белку на день в формате 140-180 г."
+        "Привет! Укажи цель по белку на день одним числом, например 160."
     )
 
 
@@ -84,26 +84,22 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args or []).strip()
     if not text:
-        await update.message.reply_text("Укажи цель: калории и белок. Пример: 1500 140-180")
+        await update.message.reply_text("Укажи цель: белок (и опционально калории). Пример: 160 или 1500 160")
         return
     calories_target = None
     protein_min = None
     protein_max = None
     nums = [int(n) for n in re.findall(r"\d+", text)]
-    if len(nums) >= 3 and "-" in text:
-        calories_target = nums[0]
-        protein_min, protein_max = nums[1], nums[2]
-    elif len(nums) == 2:
+    if len(nums) == 2:
         calories_target = nums[0]
         protein_min = nums[1]
         protein_max = nums[1]
+    elif len(nums) == 1:
+        protein_min = nums[0]
+        protein_max = nums[0]
     else:
-        parsed = _parse_target_range(text)
-        if parsed:
-            protein_min, protein_max = parsed
-        else:
-            await update.message.reply_text("Не понял. Пример: 1500 140-180")
-            return
+        await update.message.reply_text("Не понял. Пример: 160 или 1500 160")
+        return
     user = await db.get_user(update.effective_user.id)
     if not user:
         await db.create_user(update.effective_user.id, protein_min, protein_max)
@@ -112,7 +108,7 @@ async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if calories_target is not None:
         await db.update_user_calories(update.effective_user.id, calories_target)
     await update.message.reply_text(
-        f"Цель обновлена: калории {calories_target or '—'}, белок {protein_min}–{protein_max} г."
+        f"Цель обновлена: калории {calories_target or '—'}, белок {protein_min} г."
     )
 
 
@@ -252,17 +248,22 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await db.get_user(update.effective_user.id)
 
     if not user:
-        parsed = _parse_target_range(text)
-        if not parsed:
+        nums = [int(n) for n in re.findall(r"\d+", text)]
+        if len(nums) != 1:
             await update.message.reply_text(
-                "Укажи цель по белку в формате 140-180 г."
+                "Укажи цель по белку одним числом, например 160."
             )
             return
-        protein_min, protein_max = parsed
-        await db.create_user(update.effective_user.id, protein_min, protein_max)
+        protein_target = nums[0]
+        await db.create_user(update.effective_user.id, protein_target, protein_target)
         await update.message.reply_text(
-            f"Цель сохранена: {protein_min}–{protein_max} г."
+            f"Цель сохранена: {protein_target} г."
         )
+        return
+
+    # If user already has target, require meaningful text (not just numbers)
+    if not re.search(r"[A-Za-zА-Яа-я]", text):
+        await update.message.reply_text("Опиши блюдо словами.")
         return
 
     await _analyze_and_store_meal(update, source_text=text)
