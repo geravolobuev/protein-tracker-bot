@@ -108,9 +108,11 @@ async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.update_user(update.effective_user.id, protein_min, protein_max)
     if calories_target is not None:
         await db.update_user_calories(update.effective_user.id, calories_target)
-    calories_str = f"{calories_target} каллорий" if calories_target is not None else "— каллорий"
+    calories_str = (
+        f"{calories_target} каллорий" if calories_target is not None else "— каллорий"
+    )
     await update.message.reply_text(
-        f"☑️ Цель записана: {protein_min} грамм белка и {calories_str}."
+        _format_target_confirmation(protein_min, calories_target)
     )
 
 
@@ -251,15 +253,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not user:
         nums = [int(n) for n in re.findall(r"\d+", text)]
-        if len(nums) != 1:
+        calories_target = None
+        protein_target = None
+        if len(nums) == 1:
+            protein_target = nums[0]
+        elif len(nums) == 2:
+            calories_target = nums[0]
+            protein_target = nums[1]
+        else:
             await update.message.reply_text(
                 "Укажи цель по белку (и опционально калораж). Пример: 160 или 2500 160."
             )
             return
-        protein_target = nums[0]
         await db.create_user(update.effective_user.id, protein_target, protein_target)
+        if calories_target is not None:
+            await db.update_user_calories(update.effective_user.id, calories_target)
         await update.message.reply_text(
-            f"☑️ Цель записана: {protein_target} грамм белка и — каллорий."
+            _format_target_confirmation(protein_target, calories_target)
         )
         return
 
@@ -476,6 +486,13 @@ def _format_day_summary(title: str, lines: list[str], totals: dict, user: dict):
         + f"Углеводы: {totals['carb']:.1f}г\n"
         + f"Клетчатка: {totals['fiber']:.1f}г"
     )
+
+
+def _format_target_confirmation(protein_target: int, calories_target: int | None):
+    calories_str = (
+        f"{calories_target} каллорий" if calories_target is not None else "— каллорий"
+    )
+    return f"☑️ Цель записана: {protein_target} грамм белка и {calories_str}."
 
 
 def _parse_target_range(text: str):
