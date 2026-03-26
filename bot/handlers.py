@@ -107,8 +107,9 @@ async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.update_user(update.effective_user.id, protein_min, protein_max)
     if calories_target is not None:
         await db.update_user_calories(update.effective_user.id, calories_target)
+    calories_str = f"{calories_target} каллорий" if calories_target is not None else "— каллорий"
     await update.message.reply_text(
-        f"Цель обновлена: калории {calories_target or '—'}, белок {protein_min} г."
+        f"☑️ Цель записана: {protein_min} грамм белка и {calories_str}."
     )
 
 
