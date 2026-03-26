@@ -72,7 +72,7 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     totals = _sum_meals(meals)
     lines = [
-        f"{i}. {m['meal_description']} — {float(m['protein_grams']):.0f} г"
+        f"{i}. {m['meal_description']}"
         for i, m in enumerate(meals, start=1)
     ]
     text = _format_day_summary(
@@ -133,7 +133,7 @@ async def yesterday(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     totals = _sum_meals(meals)
     lines = [
-        f"{i}. {m['meal_description']} — {float(m['protein_grams']):.0f} г"
+        f"{i}. {m['meal_description']}"
         for i, m in enumerate(meals, start=1)
     ]
     text = _format_day_summary("Вчера", lines, totals, user)
@@ -348,11 +348,11 @@ async def _analyze_and_store_meal(update: Update, source_text: str):
         return
 
     user = await db.get_user(update.effective_user.id)
-    await _store_and_reply(update, result, user)
+    await _store_and_reply(update, result, user, source_text=source_text)
 
 
-async def _store_and_reply(update: Update, result: dict, user: dict):
-    meal_name = result.get("meal_name") or "Прием пищи"
+async def _store_and_reply(update: Update, result: dict, user: dict, source_text: str | None = None):
+    meal_name = _pick_meal_name(result, source_text)
     calories = float(result.get("calories", 0) or 0)
     protein = float(result.get("protein_grams", 0) or 0)
     fat = float(result.get("fat_grams", 0) or 0)
@@ -391,6 +391,16 @@ def _day_status(total: float, min_target: int, max_target: int) -> str:
     if total > max_target:
         return "перебор"
     return "в цели"
+
+
+def _pick_meal_name(result: dict, source_text: str | None):
+    if source_text:
+        return source_text.strip()
+    name = (result.get("meal_name") or "Прием пищи").strip()
+    # If model returned non-Russian name, keep generic
+    if re.search(r"[A-Za-z]", name):
+        return "Прием пищи"
+    return name
 
 
 def _sum_meals(meals: list[dict]):

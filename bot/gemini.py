@@ -7,7 +7,7 @@ import google.generativeai as genai
 MEAL_PROMPT = (
     "Analyze this meal and estimate calories and macros. "
     "Return JSON only: {"
-    "\"meal_name\": \"string\", "
+    "\"meal_name\": \"string in Russian\", "
     "\"calories\": number, "
     "\"protein_grams\": number, "
     "\"fat_grams\": number, "
@@ -15,7 +15,8 @@ MEAL_PROMPT = (
     "\"fiber_grams\": number, "
     "\"confidence\": \"low/medium/high\""
     "}. "
-    "Be concise. If unsure, give a range as the middle value."
+    "Be concise. If unsure, give a range as the middle value. "
+    "If input text is provided, keep the same dish name as input."
 )
 
 TIMEZONE_PROMPT = (
