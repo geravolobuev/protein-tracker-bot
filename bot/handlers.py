@@ -87,20 +87,12 @@ async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await update.message.reply_text("Укажи цель: белок (и опционально калории). Пример: 160 или 1500 160")
         return
-    calories_target = None
-    protein_min = None
-    protein_max = None
-    nums = [int(n) for n in re.findall(r"\d+", text)]
-    if len(nums) == 2:
-        calories_target = nums[0]
-        protein_min = nums[1]
-        protein_max = nums[1]
-    elif len(nums) == 1:
-        protein_min = nums[0]
-        protein_max = nums[0]
-    else:
+    protein_target, calories_target = _parse_targets(text)
+    if protein_target is None:
         await update.message.reply_text("Не понял. Пример: 160 или 1500 160")
         return
+    protein_min = protein_target
+    protein_max = protein_target
     user = await db.get_user(update.effective_user.id)
     if not user:
         await db.create_user(update.effective_user.id, protein_min, protein_max)
@@ -108,9 +100,6 @@ async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.update_user(update.effective_user.id, protein_min, protein_max)
     if calories_target is not None:
         await db.update_user_calories(update.effective_user.id, calories_target)
-    calories_str = (
-        f"{calories_target} каллорий" if calories_target is not None else "— каллорий"
-    )
     await update.message.reply_text(
         _format_target_confirmation(protein_min, calories_target)
     )
@@ -252,15 +241,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await db.get_user(update.effective_user.id)
 
     if not user:
-        nums = [int(n) for n in re.findall(r"\d+", text)]
-        calories_target = None
-        protein_target = None
-        if len(nums) == 1:
-            protein_target = nums[0]
-        elif len(nums) == 2:
-            calories_target = nums[0]
-            protein_target = nums[1]
-        else:
+        protein_target, calories_target = _parse_targets(text)
+        if protein_target is None:
             await update.message.reply_text(
                 "Укажи цель по белку (и опционально калораж). Пример: 160 или 2500 160."
             )
@@ -275,7 +257,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # If user already has target, require meaningful text (not just numbers)
     if not re.search(r"[A-Za-zА-Яа-я]", text):
-        await update.message.reply_text("Опиши блюдо словами.")
+        protein_target, calories_target = _parse_targets(text)
+        if protein_target is None:
+            await update.message.reply_text("Опиши блюдо словами.")
+            return
+        await db.update_user(update.effective_user.id, protein_target, protein_target)
+        if calories_target is not None:
+            await db.update_user_calories(update.effective_user.id, calories_target)
+        await update.message.reply_text(
+            _format_target_confirmation(protein_target, calories_target)
+        )
         return
 
     await _analyze_and_store_meal(update, source_text=text)
@@ -493,6 +484,20 @@ def _format_target_confirmation(protein_target: int, calories_target: int | None
         f"{calories_target} каллорий" if calories_target is not None else "— каллорий"
     )
     return f"☑️ Цель записана: {protein_target} грамм белка и {calories_str}."
+
+
+def _parse_targets(text: str):
+    nums = [int(n) for n in re.findall(r"\d+", text)]
+    if len(nums) == 1:
+        return nums[0], None
+    if len(nums) == 2:
+        a, b = nums
+        if a >= 500 and b < 500:
+            return b, a
+        if b >= 500 and a < 500:
+            return a, b
+        return None, None
+    return None, None
 
 
 def _parse_target_range(text: str):
