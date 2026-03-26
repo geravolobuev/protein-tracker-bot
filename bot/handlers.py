@@ -396,11 +396,7 @@ def _day_status(total: float, min_target: int, max_target: int) -> str:
 def _pick_meal_name(result: dict, source_text: str | None):
     if source_text:
         return source_text.strip()
-    name = (result.get("meal_name") or "Прием пищи").strip()
-    # If model returned non-Russian name, keep generic
-    if re.search(r"[A-Za-z]", name):
-        return "Прием пищи"
-    return name
+    return (result.get("meal_name") or "Прием пищи").strip()
 
 
 def _sum_meals(meals: list[dict]):
