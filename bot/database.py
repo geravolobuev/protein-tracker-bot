@@ -1,6 +1,6 @@
 import os
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 import httpx
 
@@ -47,8 +47,10 @@ async def create_user(telegram_user_id: int, protein_min: int, protein_max: int)
         url = f"{base}/rest/v1/users"
         payload = {
             "telegram_user_id": telegram_user_id,
+            "calories_target": None,
             "protein_min": protein_min,
             "protein_max": protein_max,
+            "timezone": "Europe/Moscow",
         }
         headers = _headers(key)
         headers["Prefer"] = "return=representation"
@@ -81,6 +83,40 @@ async def update_user(telegram_user_id: int, protein_min: int, protein_max: int)
     return res[0] if res else None
 
 
+async def update_user_calories(telegram_user_id: int, calories_target: int):
+    def _run():
+        base, key = _get_config()
+        url = f"{base}/rest/v1/users"
+        payload = {"calories_target": calories_target}
+        params = {"telegram_user_id": f"eq.{telegram_user_id}"}
+        headers = _headers(key)
+        headers["Prefer"] = "return=representation"
+        with httpx.Client(timeout=10) as client:
+            res = client.patch(url, headers=headers, params=params, json=payload)
+            res.raise_for_status()
+            return res.json()
+
+    res = await asyncio.to_thread(_run)
+    return res[0] if res else None
+
+
+async def update_user_timezone(telegram_user_id: int, timezone: str):
+    def _run():
+        base, key = _get_config()
+        url = f"{base}/rest/v1/users"
+        payload = {"timezone": timezone}
+        params = {"telegram_user_id": f"eq.{telegram_user_id}"}
+        headers = _headers(key)
+        headers["Prefer"] = "return=representation"
+        with httpx.Client(timeout=10) as client:
+            res = client.patch(url, headers=headers, params=params, json=payload)
+            res.raise_for_status()
+            return res.json()
+
+    res = await asyncio.to_thread(_run)
+    return res[0] if res else None
+
+
 async def get_all_users():
     def _run():
         base, key = _get_config()
@@ -98,7 +134,11 @@ async def get_all_users():
 async def add_meal(
     telegram_user_id: int,
     meal_description: str,
+    calories: float,
     protein_grams: float,
+    fat_grams: float,
+    carb_grams: float,
+    fiber_grams: float,
     user_id: str | None = None,
 ):
     def _run():
@@ -107,7 +147,11 @@ async def add_meal(
         payload = {
             "telegram_user_id": telegram_user_id,
             "meal_description": meal_description,
+            "calories": calories,
             "protein_grams": protein_grams,
+            "fat_grams": fat_grams,
+            "carb_grams": carb_grams,
+            "fiber_grams": fiber_grams,
             "user_id": user_id,
         }
         headers = _headers(key)
@@ -121,17 +165,27 @@ async def add_meal(
     return res[0] if res else None
 
 
-def _today_range_utc():
-    now_msk = datetime.now(_MSK)
-    start_msk = now_msk.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_msk = start_msk.replace(hour=23, minute=59, second=59, microsecond=999999)
-    start_utc = start_msk.astimezone(timezone.utc)
-    end_utc = end_msk.astimezone(timezone.utc)
+def _day_range_utc(day: datetime):
+    start_local = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_local = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
     return start_utc.isoformat(), end_utc.isoformat()
 
 
-async def get_today_meals(telegram_user_id: int):
-    start_iso, end_iso = _today_range_utc()
+def _today_range_utc(tz: ZoneInfo):
+    now_local = datetime.now(tz)
+    return _day_range_utc(now_local)
+
+
+def _yesterday_range_utc(tz: ZoneInfo):
+    now_local = datetime.now(tz)
+    yesterday = now_local - timedelta(days=1)
+    return _day_range_utc(yesterday)
+
+
+async def get_today_meals(telegram_user_id: int, tz):
+    start_iso, end_iso = _today_range_utc(tz)
 
     def _run():
         base, key = _get_config()
@@ -152,8 +206,8 @@ async def get_today_meals(telegram_user_id: int):
     return res or []
 
 
-async def delete_today_meals(telegram_user_id: int):
-    start_iso, end_iso = _today_range_utc()
+async def delete_today_meals(telegram_user_id: int, tz):
+    start_iso, end_iso = _today_range_utc(tz)
 
     def _run():
         base, key = _get_config()
@@ -167,6 +221,26 @@ async def delete_today_meals(telegram_user_id: int):
         headers["Prefer"] = "return=representation"
         with httpx.Client(timeout=10) as client:
             res = client.delete(url, headers=headers, params=params)
+            res.raise_for_status()
+            return res.json()
+
+    res = await asyncio.to_thread(_run)
+    return res or []
+
+
+async def get_meals_between(telegram_user_id: int, start_iso: str, end_iso: str):
+    def _run():
+        base, key = _get_config()
+        url = f"{base}/rest/v1/meals"
+        params = [
+            ("select", "*"),
+            ("telegram_user_id", f"eq.{telegram_user_id}"),
+            ("created_at", f"gte.{start_iso}"),
+            ("created_at", f"lte.{end_iso}"),
+            ("order", "created_at.asc"),
+        ]
+        with httpx.Client(timeout=10) as client:
+            res = client.get(url, headers=_headers(key), params=params)
             res.raise_for_status()
             return res.json()
 

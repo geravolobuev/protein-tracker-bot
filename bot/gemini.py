@@ -5,9 +5,16 @@ import tempfile
 import google.generativeai as genai
 
 MEAL_PROMPT = (
-    "Analyze this meal and estimate the protein content in grams. "
-    "Return JSON only: {\"protein_grams\": number, \"meal_name\": \"string\", "
-    "\"confidence\": \"low/medium/high\"} "
+    "Analyze this meal and estimate calories and macros. "
+    "Return JSON only: {"
+    "\"meal_name\": \"string\", "
+    "\"calories\": number, "
+    "\"protein_grams\": number, "
+    "\"fat_grams\": number, "
+    "\"carb_grams\": number, "
+    "\"fiber_grams\": number, "
+    "\"confidence\": \"low/medium/high\""
+    "}. "
     "Be concise. If unsure, give a range as the middle value."
 )
 

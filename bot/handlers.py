@@ -70,33 +70,49 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Сегодня записей нет.")
         return
 
-    total = sum(float(m["protein_grams"]) for m in meals)
+    totals = _sum_meals(meals)
     lines = [
         f"{i}. {m['meal_description']} — {float(m['protein_grams']):.0f} г"
         for i, m in enumerate(meals, start=1)
     ]
-    target = f"{user['protein_min']}–{user['protein_max']} г"
-    text = "Сегодня:\n" + "\n".join(lines) + f"\nИтого: {total:.0f} г (цель {target})."
+    text = _format_day_summary(
+        "Сегодня", lines, totals, user
+    )
     await update.message.reply_text(text)
 
 
 async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args or []).strip()
     if not text:
-        await update.message.reply_text("Укажи цель в формате 140-180 г.")
+        await update.message.reply_text("Укажи цель: калории и белок. Пример: 1500 140-180")
         return
-    parsed = _parse_target_range(text)
-    if not parsed:
-        await update.message.reply_text("Не понял. Формат: 140-180 г.")
-        return
-    protein_min, protein_max = parsed
+    calories_target = None
+    protein_min = None
+    protein_max = None
+    nums = [int(n) for n in re.findall(r"\d+", text)]
+    if len(nums) >= 3 and "-" in text:
+        calories_target = nums[0]
+        protein_min, protein_max = nums[1], nums[2]
+    elif len(nums) == 2:
+        calories_target = nums[0]
+        protein_min = nums[1]
+        protein_max = nums[1]
+    else:
+        parsed = _parse_target_range(text)
+        if parsed:
+            protein_min, protein_max = parsed
+        else:
+            await update.message.reply_text("Не понял. Пример: 1500 140-180")
+            return
     user = await db.get_user(update.effective_user.id)
     if not user:
         await db.create_user(update.effective_user.id, protein_min, protein_max)
     else:
         await db.update_user(update.effective_user.id, protein_min, protein_max)
+    if calories_target is not None:
+        await db.update_user_calories(update.effective_user.id, calories_target)
     await update.message.reply_text(
-        f"Цель обновлена: {protein_min}–{protein_max} г."
+        f"Цель обновлена: калории {calories_target or '—'}, белок {protein_min}–{protein_max} г."
     )
 
 
@@ -115,12 +131,12 @@ async def yesterday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not meals:
         await update.message.reply_text("Вчера записей нет.")
         return
-    total = sum(float(m["protein_grams"]) for m in meals)
+    totals = _sum_meals(meals)
     lines = [
         f"{i}. {m['meal_description']} — {float(m['protein_grams']):.0f} г"
         for i, m in enumerate(meals, start=1)
     ]
-    text = "Вчера:\n" + "\n".join(lines) + f"\nИтого: {total:.0f} г."
+    text = _format_day_summary("Вчера", lines, totals, user)
     await update.message.reply_text(text)
 
 
@@ -336,26 +352,28 @@ async def _analyze_and_store_meal(update: Update, source_text: str):
 
 
 async def _store_and_reply(update: Update, result: dict, user: dict):
-    protein = float(result.get("protein_grams", 0) or 0)
     meal_name = result.get("meal_name") or "Прием пищи"
+    calories = float(result.get("calories", 0) or 0)
+    protein = float(result.get("protein_grams", 0) or 0)
+    fat = float(result.get("fat_grams", 0) or 0)
+    carbs = float(result.get("carb_grams", 0) or 0)
+    fiber = float(result.get("fiber_grams", 0) or 0)
 
     await db.add_meal(
         telegram_user_id=update.effective_user.id,
         meal_description=meal_name,
+        calories=calories,
         protein_grams=protein,
+        fat_grams=fat,
+        carb_grams=carbs,
+        fiber_grams=fiber,
         user_id=user.get("id"),
     )
 
     tz = _get_user_tz(user)
     meals = await db.get_today_meals(update.effective_user.id, tz)
-    total = sum(float(m["protein_grams"]) for m in meals)
-    comment = _comment_on_track(total, user["protein_min"], user["protein_max"])
-
-    reply = (
-        f"Белок: {protein:.0f} г. "
-        f"Итого сегодня: {total:.0f} г (цель {user['protein_min']}–{user['protein_max']}). "
-        f"{comment}"
-    )
+    totals = _sum_meals(meals)
+    reply = _format_meal_reply(meal_name, calories, protein, fat, carbs, fiber, totals, user)
     await update.message.reply_text(reply)
 
 
@@ -373,6 +391,82 @@ def _day_status(total: float, min_target: int, max_target: int) -> str:
     if total > max_target:
         return "перебор"
     return "в цели"
+
+
+def _sum_meals(meals: list[dict]):
+    totals = {
+        "calories": 0.0,
+        "protein": 0.0,
+        "fat": 0.0,
+        "carb": 0.0,
+        "fiber": 0.0,
+    }
+    for m in meals:
+        totals["calories"] += float(m.get("calories", 0) or 0)
+        totals["protein"] += float(m.get("protein_grams", 0) or 0)
+        totals["fat"] += float(m.get("fat_grams", 0) or 0)
+        totals["carb"] += float(m.get("carb_grams", 0) or 0)
+        totals["fiber"] += float(m.get("fiber_grams", 0) or 0)
+    return totals
+
+
+def _format_meal_reply(meal_name, calories, protein, fat, carbs, fiber, totals, user):
+    cal_target = user.get("calories_target")
+    protein_min = user.get("protein_min")
+    protein_max = user.get("protein_max")
+    cal_status = "⚠️"
+    if cal_target:
+        cal_status = "✅" if totals["calories"] >= float(cal_target) else "⚠️"
+    protein_status = "✅" if protein_min <= totals["protein"] <= protein_max else "⚠️"
+    protein_target_str = (
+        f"{protein_min:.0f}–{protein_max:.0f}"
+        if protein_min != protein_max
+        else f"{protein_min:.0f}"
+    )
+    cal_target_str = f"{float(cal_target):.0f}" if cal_target else "—"
+
+    return (
+        f"☑️ Записано: {meal_name}.\n\n"
+        "🍽️ Текущий прием:\n"
+        f"Калории: {calories:.0f}кл\n"
+        f"Белок: {protein:.0f}г\n"
+        f"Жиры: {fat:.0f}г\n"
+        f"Углеводы: {carbs:.0f}г\n"
+        f"Клетчатка: {fiber:.0f}г\n\n"
+        "📊 Сьедено / Цель:\n"
+        f"Калории: {totals['calories']:.0f} / {cal_target_str} {cal_status}\n"
+        f"Белок: {totals['protein']:.0f} / {protein_target_str} {protein_status}\n"
+        f"Жиры: {totals['fat']:.1f}г\n"
+        f"Углеводы: {totals['carb']:.1f}г\n"
+        f"Клетчатка: {totals['fiber']:.1f}г"
+    )
+
+
+def _format_day_summary(title: str, lines: list[str], totals: dict, user: dict):
+    cal_target = user.get("calories_target")
+    protein_min = user.get("protein_min")
+    protein_max = user.get("protein_max")
+    cal_status = "⚠️"
+    if cal_target:
+        cal_status = "✅" if totals["calories"] >= float(cal_target) else "⚠️"
+    protein_status = "✅" if protein_min <= totals["protein"] <= protein_max else "⚠️"
+    protein_target_str = (
+        f"{protein_min:.0f}–{protein_max:.0f}"
+        if protein_min != protein_max
+        else f"{protein_min:.0f}"
+    )
+    cal_target_str = f"{float(cal_target):.0f}" if cal_target else "—"
+
+    return (
+        f"{title}:\n"
+        + "\n".join(lines)
+        + "\n\n📊 Сьедено / Цель:\n"
+        + f"Калории: {totals['calories']:.0f} / {cal_target_str} {cal_status}\n"
+        + f"Белок: {totals['protein']:.0f} / {protein_target_str} {protein_status}\n"
+        + f"Жиры: {totals['fat']:.1f}г\n"
+        + f"Углеводы: {totals['carb']:.1f}г\n"
+        + f"Клетчатка: {totals['fiber']:.1f}г"
+    )
 
 
 def _parse_target_range(text: str):
