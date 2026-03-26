@@ -52,7 +52,8 @@ async def _post_init(app: Application):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Укажи цель по белку на день одним числом, например 160."
+        "Привет! Укажи цель по белку (и опционально калораж). "
+        "Пример: 160 или 2500 160."
     )
 
 
