@@ -6,8 +6,9 @@ import google.generativeai as genai
 
 MEAL_PROMPT = (
     "Analyze this meal and estimate calories and macros. "
+    "Assume all weights refer to the готовое блюдо (ready-to-eat). "
     "Return JSON only: {"
-    "\"meal_name\": \"string in Russian\", "
+    "\"meal_name\": \"string\", "
     "\"calories\": number, "
     "\"protein_grams\": number, "
     "\"fat_grams\": number, "
