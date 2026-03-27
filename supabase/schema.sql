@@ -5,6 +5,8 @@ create table if not exists users (
   protein_min integer not null,
   protein_max integer not null,
   timezone text not null default 'Europe/Moscow',
+  pending_meal_text text,
+  pending_meal_created_at timestamptz,
   created_at timestamptz not null default now()
 );
 

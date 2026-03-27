@@ -255,6 +255,24 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # If waiting for clarification about dry/cooked weight
+    pending = (user.get("pending_meal_text") or "").strip()
+    if pending:
+        clarification = _parse_weight_clarification(text)
+        if not clarification:
+            await update.message.reply_text("Уточни: сухой вес или готовая порция?")
+            return
+        await db.set_pending_meal(update.effective_user.id, None)
+        merged = f"{pending} ({clarification})"
+        await _analyze_and_store_meal(update, source_text=merged)
+        return
+
+    # Ask clarification for oats with grams
+    if _needs_weight_clarification(text):
+        await db.set_pending_meal(update.effective_user.id, text)
+        await update.message.reply_text("100 г — это сухой вес или готовая порция? Ответь: сухой / готовая.")
+        return
+
     # If user already has target, require meaningful text (not just numbers)
     if not re.search(r"[A-Za-zА-Яа-я]", text):
         protein_target, calories_target = _parse_targets(text)
@@ -498,6 +516,22 @@ def _parse_targets(text: str):
             return a, b
         return None, None
     return None, None
+
+
+def _needs_weight_clarification(text: str) -> bool:
+    t = text.lower()
+    if "овсян" not in t:
+        return False
+    return bool(re.search(r"\b\d+\s*г", t))
+
+
+def _parse_weight_clarification(text: str) -> str | None:
+    t = text.lower()
+    if "сух" in t:
+        return "сухой вес"
+    if "готов" in t or "варен" in t:
+        return "готовая порция"
+    return None
 
 
 def _parse_target_range(text: str):
