@@ -262,38 +262,57 @@ export default function HomePage() {
   }
 
   async function convertToJpeg(file) {
+    // JPEG и PNG — читаем напрямую без canvas
+    if (file.type === "image/jpeg" || file.type === "image/png") {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = String(reader.result || "");
+          const base64 = result.split(",")[1] || "";
+          if (!base64) {
+            reject(new Error("Не удалось прочитать фото"));
+            return;
+          }
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error("Не удалось прочитать фото"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // HEIC и все остальные форматы — конвертируем через canvas
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           URL.revokeObjectURL(url);
-          reject(new Error("Не удалось обработать фото"));
+          reject(new Error("Canvas недоступен"));
           return;
         }
         ctx.drawImage(img, 0, 0);
         canvas.toBlob(
           (blob) => {
+            URL.revokeObjectURL(url);
             if (!blob) {
-              URL.revokeObjectURL(url);
               reject(new Error("Не удалось конвертировать фото"));
               return;
             }
             const reader = new FileReader();
             reader.onload = () => {
-              URL.revokeObjectURL(url);
               const result = String(reader.result || "");
               const base64 = result.split(",")[1] || "";
+              if (!base64) {
+                reject(new Error("Не удалось прочитать сконвертированное фото"));
+                return;
+              }
               resolve(base64);
             };
-            reader.onerror = () => {
-              URL.revokeObjectURL(url);
-              reject(new Error("Не удалось прочитать фото"));
-            };
+            reader.onerror = () => reject(new Error("Не удалось прочитать blob"));
             reader.readAsDataURL(blob);
           },
           "image/jpeg",
@@ -302,7 +321,7 @@ export default function HomePage() {
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error("Не удалось открыть фото"));
+        reject(new Error("Не удалось открыть фото. Попробуй сделать скриншот и загрузить его."));
       };
       img.src = url;
     });
