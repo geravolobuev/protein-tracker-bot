@@ -262,68 +262,40 @@ export default function HomePage() {
   }
 
   async function convertToJpeg(file) {
-    // JPEG и PNG — читаем напрямую без canvas
-    if (file.type === "image/jpeg" || file.type === "image/png") {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = String(reader.result || "");
-          const base64 = result.split(",")[1] || "";
-          if (!base64) {
-            reject(new Error("Не удалось прочитать фото"));
-            return;
-          }
-          resolve(base64);
-        };
-        reader.onerror = () => reject(new Error("Не удалось прочитать фото"));
-        reader.readAsDataURL(file);
-      });
+    let processedFile = file;
+
+    // Конвертируем HEIC/HEIF через библиотеку heic2any
+    const isHeic =
+      file.type === "image/heic" ||
+      file.type === "image/heif" ||
+      file.type === "" ||
+      file.name?.toLowerCase().endsWith(".heic") ||
+      file.name?.toLowerCase().endsWith(".heif");
+
+    if (isHeic) {
+      try {
+        const heic2any = (await import("heic2any")).default;
+        const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.85 });
+        processedFile = Array.isArray(blob) ? blob[0] : blob;
+      } catch (e) {
+        throw new Error("Не удалось конвертировать HEIC: " + e.message);
+      }
     }
 
-    // HEIC и все остальные форматы — конвертируем через canvas
+    // Читаем как base64
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          URL.revokeObjectURL(url);
-          reject(new Error("Canvas недоступен"));
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const base64 = result.split(",")[1] || "";
+        if (!base64) {
+          reject(new Error("Не удалось прочитать фото"));
           return;
         }
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(
-          (blob) => {
-            URL.revokeObjectURL(url);
-            if (!blob) {
-              reject(new Error("Не удалось конвертировать фото"));
-              return;
-            }
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = String(reader.result || "");
-              const base64 = result.split(",")[1] || "";
-              if (!base64) {
-                reject(new Error("Не удалось прочитать сконвертированное фото"));
-                return;
-              }
-              resolve(base64);
-            };
-            reader.onerror = () => reject(new Error("Не удалось прочитать blob"));
-            reader.readAsDataURL(blob);
-          },
-          "image/jpeg",
-          0.85
-        );
+        resolve(base64);
       };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Не удалось открыть фото. Попробуй сделать скриншот и загрузить его."));
-      };
-      img.src = url;
+      reader.onerror = () => reject(new Error("Не удалось прочитать фото"));
+      reader.readAsDataURL(processedFile);
     });
   }
 
