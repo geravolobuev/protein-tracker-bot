@@ -25,6 +25,7 @@ export default async function handler(req, res) {
     const telegramUserId = getTelegramUserId();
     const type = req.body?.type;
     const content = String(req.body?.content || "").trim();
+    const caption = String(req.body?.caption || "").trim();
 
     if (!["text", "image"].includes(type)) {
       return res.status(400).json({ error: "Неверный type" });
@@ -33,7 +34,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Пустой content" });
     }
 
-    const parsed = await analyzeMealWithGemini({ type, content });
+    const parsed = await analyzeMealWithGemini({ type, content, caption });
     const { user, timezone } = await getUserAndTimezone(telegramUserId);
 
     await supabasePost("meals", {

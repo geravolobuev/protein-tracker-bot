@@ -5,6 +5,7 @@ export default function HomePage() {
   const [text, setText] = useState("");
   const [imageBase64, setImageBase64] = useState("");
   const [imagePreview, setImagePreview] = useState("");
+  const [imageCaption, setImageCaption] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -121,7 +122,7 @@ export default function HomePage() {
     try {
       const payload = mode === "text"
         ? { type: "text", content: text.trim() }
-        : { type: "image", content: imageBase64 };
+        : { type: "image", content: imageBase64, caption: imageCaption.trim() };
 
       if (!payload.content) throw new Error(mode === "text" ? "Введите описание блюда" : "Загрузите фото");
 
@@ -146,6 +147,7 @@ export default function HomePage() {
       setText("");
       setImageBase64("");
       setImagePreview("");
+      setImageCaption("");
       await loadToday(token);
     } catch (e) {
       setError(e.message || "Ошибка записи");
@@ -259,16 +261,63 @@ export default function HomePage() {
     }
   }
 
-  function onPickImage(file) {
+  async function convertToJpeg(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error("Не удалось обработать фото"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              URL.revokeObjectURL(url);
+              reject(new Error("Не удалось конвертировать фото"));
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              URL.revokeObjectURL(url);
+              const result = String(reader.result || "");
+              const base64 = result.split(",")[1] || "";
+              resolve(base64);
+            };
+            reader.onerror = () => {
+              URL.revokeObjectURL(url);
+              reject(new Error("Не удалось прочитать фото"));
+            };
+            reader.readAsDataURL(blob);
+          },
+          "image/jpeg",
+          0.85
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Не удалось открыть фото"));
+      };
+      img.src = url;
+    });
+  }
+
+  async function onPickImage(file) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      const parts = result.split(",");
-      setImagePreview(result);
-      setImageBase64(parts[1] || "");
-    };
-    reader.readAsDataURL(file);
+    try {
+      setError("");
+      const base64 = await convertToJpeg(file);
+      setImageBase64(base64);
+      setImagePreview(`data:image/jpeg;base64,${base64}`);
+    } catch (e) {
+      setError(e.message || "Не удалось обработать фото");
+    }
   }
 
   if (!authReady) {
@@ -383,7 +432,7 @@ export default function HomePage() {
                 <input
                   ref={cameraInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,image/heic,image/heif"
                   capture="environment"
                   className="hidden"
                   onChange={(e) => onPickImage(e.target.files?.[0])}
@@ -391,11 +440,21 @@ export default function HomePage() {
                 <input
                   ref={galleryInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,image/heic,image/heif"
                   className="hidden"
                   onChange={(e) => onPickImage(e.target.files?.[0])}
                 />
-                {imagePreview ? <img src={imagePreview} alt="preview" className="max-h-48 w-full rounded-xl object-cover" /> : null}
+                {imagePreview ? (
+                  <div className="space-y-3">
+                    <img src={imagePreview} alt="preview" className="max-h-[200px] w-full rounded-xl object-cover" />
+                    <input
+                      className="w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
+                      placeholder="Добавить описание (необязательно)"
+                      value={imageCaption}
+                      onChange={(e) => setImageCaption(e.target.value)}
+                    />
+                  </div>
+                ) : null}
               </div>
             )}
 
