@@ -19,7 +19,6 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
-
   try {
     if (!requireAuth(req, res)) return;
     const telegramUserId = getTelegramUserId();
@@ -32,6 +31,13 @@ export default async function handler(req, res) {
     }
     if (!content) {
       return res.status(400).json({ error: "Пустой content" });
+    }
+
+    if (type === "image") {
+      const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+      if (!base64Regex.test(content)) {
+        return res.status(400).json({ error: `Некорректный формат изображения. Длина: ${content.length}, начало: ${content.slice(0, 30)}` });
+      }
     }
 
     const parsed = await analyzeMealWithGemini({ type, content, caption });
@@ -49,7 +55,6 @@ export default async function handler(req, res) {
     });
 
     const { totals } = await getTodayMealsAndTotals(telegramUserId, timezone);
-
     return res.status(200).json({
       protein_grams: parsed.protein_grams,
       calories: parsed.calories,
