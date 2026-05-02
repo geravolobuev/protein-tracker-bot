@@ -1,8 +1,10 @@
-import { getWebUserId, getUserAndTimezone, supabasePatch, supabasePost } from "../../lib/web";
+import { getTelegramUserId, getUserAndTimezone, supabasePatch, supabasePost } from "../../lib/web";
+import { requireAuth } from "../../lib/auth";
 
 export default async function handler(req, res) {
   try {
-    const telegramUserId = getWebUserId();
+    if (!requireAuth(req, res)) return;
+    const telegramUserId = getTelegramUserId();
 
     if (req.method === "GET") {
       const { user } = await getUserAndTimezone(telegramUserId);

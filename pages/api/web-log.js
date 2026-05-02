@@ -2,9 +2,10 @@ import {
   analyzeMealWithGemini,
   getTodayMealsAndTotals,
   getUserAndTimezone,
-  getWebUserId,
+  getTelegramUserId,
   supabasePost,
 } from "../../lib/web";
+import { requireAuth } from "../../lib/auth";
 
 export const config = {
   api: {
@@ -20,7 +21,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const telegramUserId = getWebUserId();
+    if (!requireAuth(req, res)) return;
+    const telegramUserId = getTelegramUserId();
     const type = req.body?.type;
     const content = String(req.body?.content || "").trim();
 

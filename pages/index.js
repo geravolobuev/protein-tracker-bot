@@ -14,16 +14,40 @@ export default function HomePage() {
   const [proteinMinInput, setProteinMinInput] = useState("");
   const [proteinMaxInput, setProteinMaxInput] = useState("");
 
+  const [authReady, setAuthReady] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [token, setToken] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [authError, setAuthError] = useState("");
+
   const progressPct = useMemo(() => {
     if (!target?.protein_max) return 0;
     return Math.max(0, Math.min(100, (Number(totals?.protein_grams || 0) / Number(target.protein_max)) * 100));
   }, [totals, target]);
 
-  async function loadToday() {
+  function authHeaders(currentToken, includeJson = false) {
+    return {
+      ...(includeJson ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${currentToken}`,
+    };
+  }
+
+  async function loadToday(currentToken) {
     try {
       setError("");
-      const res = await fetch("/api/web-today");
+      const res = await fetch("/api/web-today", {
+        headers: authHeaders(currentToken),
+      });
       const data = await res.json();
+
+      if (res.status === 401) {
+        localStorage.removeItem("auth_token");
+        setIsAuthed(false);
+        setToken("");
+        setAuthError("Неверный пароль");
+        return;
+      }
+
       if (!res.ok) throw new Error(data?.error || "Ошибка загрузки");
       setMeals(data.meals || []);
       setTotals(data.totals || { protein_grams: 0 });
@@ -36,8 +60,54 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    loadToday();
+    const stored = localStorage.getItem("auth_token") || "";
+    if (!stored) {
+      setAuthReady(true);
+      return;
+    }
+
+    setToken(stored);
+    setIsAuthed(true);
+    setAuthReady(true);
+    loadToday(stored);
   }, []);
+
+  async function onLogin(e) {
+    e.preventDefault();
+    const candidate = passwordInput.trim();
+    if (!candidate) {
+      setAuthError("Введите пароль");
+      return;
+    }
+
+    setLoading(true);
+    setAuthError("");
+    try {
+      const res = await fetch("/api/web-today", {
+        headers: authHeaders(candidate),
+      });
+      const data = await res.json();
+      if (res.status === 401) {
+        setAuthError("Неверный пароль");
+        return;
+      }
+      if (!res.ok) throw new Error(data?.error || "Ошибка входа");
+
+      localStorage.setItem("auth_token", candidate);
+      setToken(candidate);
+      setIsAuthed(true);
+      setMeals(data.meals || []);
+      setTotals(data.totals || { protein_grams: 0 });
+      setTarget(data.target || { protein_min: null, protein_max: null });
+      setProteinMinInput(data.target?.protein_min ?? "");
+      setProteinMaxInput(data.target?.protein_max ?? "");
+      setPasswordInput("");
+    } catch (e) {
+      setAuthError(e.message || "Ошибка входа");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function onSubmitMeal(e) {
     e.preventDefault();
@@ -54,17 +124,26 @@ export default function HomePage() {
 
       const res = await fetch("/api/web-log", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(token, true),
         body: JSON.stringify(payload),
       });
       const data = await res.json();
+
+      if (res.status === 401) {
+        localStorage.removeItem("auth_token");
+        setIsAuthed(false);
+        setToken("");
+        setAuthError("Сессия истекла. Введите пароль снова");
+        return;
+      }
+
       if (!res.ok) throw new Error(data?.error || "Не удалось записать прием");
 
       setSuccess(`Записано: ${data.meal_name}. Белок: ${Math.round(Number(data.protein_grams || 0))} г`);
       setText("");
       setImageBase64("");
       setImagePreview("");
-      await loadToday();
+      await loadToday(token);
     } catch (e) {
       setError(e.message || "Ошибка записи");
     } finally {
@@ -83,10 +162,19 @@ export default function HomePage() {
       const max = Number(proteinMaxInput);
       const res = await fetch("/api/web-user", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(token, true),
         body: JSON.stringify({ protein_min: min, protein_max: max }),
       });
       const data = await res.json();
+
+      if (res.status === 401) {
+        localStorage.removeItem("auth_token");
+        setIsAuthed(false);
+        setToken("");
+        setAuthError("Сессия истекла. Введите пароль снова");
+        return;
+      }
+
       if (!res.ok) throw new Error(data?.error || "Не удалось сохранить цель");
       setTarget({ protein_min: data.protein_min, protein_max: data.protein_max });
       setSuccess("Цель сохранена");
@@ -107,6 +195,38 @@ export default function HomePage() {
       setImageBase64(parts[1] || "");
     };
     reader.readAsDataURL(file);
+  }
+
+  if (!authReady) {
+    return <main className="min-h-screen bg-white" />;
+  }
+
+  if (!isAuthed) {
+    return (
+      <main className="min-h-screen bg-white px-4">
+        <div className="mx-auto flex min-h-screen max-w-md items-center justify-center">
+          <form onSubmit={onLogin} className="w-full rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h1 className="text-lg font-semibold">Вход</h1>
+            <p className="mt-1 text-sm text-slate-500">Введите пароль</p>
+            <input
+              type="password"
+              className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
+              placeholder="Пароль"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-base font-medium text-white"
+            >
+              {loading ? "Проверка..." : "Войти"}
+            </button>
+            {authError ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{authError}</p> : null}
+          </form>
+        </div>
+      </main>
+    );
   }
 
   return (

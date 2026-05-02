@@ -1,4 +1,5 @@
-import { getTodayMealsAndTotals, getUserAndTimezone, getWebUserId } from "../../lib/web";
+import { getTodayMealsAndTotals, getUserAndTimezone, getTelegramUserId } from "../../lib/web";
+import { requireAuth } from "../../lib/auth";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -6,7 +7,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const telegramUserId = getWebUserId();
+    if (!requireAuth(req, res)) return;
+    const telegramUserId = getTelegramUserId();
     const { user, timezone } = await getUserAndTimezone(telegramUserId);
     const { meals, totals } = await getTodayMealsAndTotals(telegramUserId, timezone);
 
