@@ -15,8 +15,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       timezone,
       target: {
-        protein_min: user?.protein_min ?? null,
-        protein_max: user?.protein_max ?? null,
+        protein_target: user?.protein_max ?? user?.protein_min ?? null,
       },
       meals,
       totals,

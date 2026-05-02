@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function HomePage() {
   const [mode, setMode] = useState("text");
@@ -10,9 +10,11 @@ export default function HomePage() {
   const [success, setSuccess] = useState("");
   const [meals, setMeals] = useState([]);
   const [totals, setTotals] = useState({ protein_grams: 0 });
-  const [target, setTarget] = useState({ protein_min: null, protein_max: null });
-  const [proteinMinInput, setProteinMinInput] = useState("");
-  const [proteinMaxInput, setProteinMaxInput] = useState("");
+  const [target, setTarget] = useState({ protein_target: null });
+  const [proteinTargetInput, setProteinTargetInput] = useState("");
+
+  const [editingMealId, setEditingMealId] = useState(null);
+  const [editingMealText, setEditingMealText] = useState("");
 
   const [authReady, setAuthReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -20,9 +22,12 @@ export default function HomePage() {
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
 
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+
   const progressPct = useMemo(() => {
-    if (!target?.protein_max) return 0;
-    return Math.max(0, Math.min(100, (Number(totals?.protein_grams || 0) / Number(target.protein_max)) * 100));
+    if (!target?.protein_target) return 0;
+    return Math.max(0, Math.min(100, (Number(totals?.protein_grams || 0) / Number(target.protein_target)) * 100));
   }, [totals, target]);
 
   function authHeaders(currentToken, includeJson = false) {
@@ -51,9 +56,8 @@ export default function HomePage() {
       if (!res.ok) throw new Error(data?.error || "Ошибка загрузки");
       setMeals(data.meals || []);
       setTotals(data.totals || { protein_grams: 0 });
-      setTarget(data.target || { protein_min: null, protein_max: null });
-      setProteinMinInput(data.target?.protein_min ?? "");
-      setProteinMaxInput(data.target?.protein_max ?? "");
+      setTarget(data.target || { protein_target: null });
+      setProteinTargetInput(data.target?.protein_target ?? "");
     } catch (e) {
       setError(e.message || "Ошибка загрузки");
     }
@@ -98,9 +102,8 @@ export default function HomePage() {
       setIsAuthed(true);
       setMeals(data.meals || []);
       setTotals(data.totals || { protein_grams: 0 });
-      setTarget(data.target || { protein_min: null, protein_max: null });
-      setProteinMinInput(data.target?.protein_min ?? "");
-      setProteinMaxInput(data.target?.protein_max ?? "");
+      setTarget(data.target || { protein_target: null });
+      setProteinTargetInput(data.target?.protein_target ?? "");
       setPasswordInput("");
     } catch (e) {
       setAuthError(e.message || "Ошибка входа");
@@ -158,12 +161,11 @@ export default function HomePage() {
     setSuccess("");
 
     try {
-      const min = Number(proteinMinInput);
-      const max = Number(proteinMaxInput);
+      const proteinTarget = Number(proteinTargetInput);
       const res = await fetch("/api/web-user", {
         method: "POST",
         headers: authHeaders(token, true),
-        body: JSON.stringify({ protein_min: min, protein_max: max }),
+        body: JSON.stringify({ protein_target: proteinTarget }),
       });
       const data = await res.json();
 
@@ -176,10 +178,82 @@ export default function HomePage() {
       }
 
       if (!res.ok) throw new Error(data?.error || "Не удалось сохранить цель");
-      setTarget({ protein_min: data.protein_min, protein_max: data.protein_max });
+      setTarget({ protein_target: data.protein_target });
       setSuccess("Цель сохранена");
     } catch (e) {
       setError(e.message || "Ошибка сохранения цели");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onDeleteMeal(mealId) {
+    if (!confirm("Удалить эту запись?")) return;
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch(`/api/web-meal?id=${mealId}`, {
+        method: "DELETE",
+        headers: authHeaders(token),
+      });
+      const data = await res.json();
+
+      if (res.status === 401) {
+        localStorage.removeItem("auth_token");
+        setIsAuthed(false);
+        setToken("");
+        setAuthError("Сессия истекла. Введите пароль снова");
+        return;
+      }
+
+      if (!res.ok) throw new Error(data?.error || "Не удалось удалить запись");
+      setSuccess("Запись удалена");
+      await loadToday(token);
+    } catch (e) {
+      setError(e.message || "Ошибка удаления");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onSaveMealEdit(mealId) {
+    const newText = editingMealText.trim();
+    if (!newText) {
+      setError("Описание не может быть пустым");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch(`/api/web-meal?id=${mealId}`, {
+        method: "PATCH",
+        headers: authHeaders(token, true),
+        body: JSON.stringify({ meal_description: newText }),
+      });
+      const data = await res.json();
+
+      if (res.status === 401) {
+        localStorage.removeItem("auth_token");
+        setIsAuthed(false);
+        setToken("");
+        setAuthError("Сессия истекла. Введите пароль снова");
+        return;
+      }
+
+      if (!res.ok) throw new Error(data?.error || "Не удалось обновить запись");
+
+      setEditingMealId(null);
+      setEditingMealText("");
+      setSuccess("Запись обновлена");
+      await loadToday(token);
+    } catch (e) {
+      setError(e.message || "Ошибка обновления");
     } finally {
       setLoading(false);
     }
@@ -237,7 +311,7 @@ export default function HomePage() {
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-500">Сегодня съедено белка</p>
           <p className="mt-1 text-lg font-semibold">
-            {Math.round(Number(totals?.protein_grams || 0))} / {target?.protein_max ?? "-"} г
+            {Math.round(Number(totals?.protein_grams || 0))} / {target?.protein_target ?? "-"} г
           </p>
           <div className="mt-3 h-3 w-full rounded-full bg-slate-200">
             <div className="h-3 rounded-full bg-emerald-500" style={{ width: `${progressPct}%` }} />
@@ -247,22 +321,13 @@ export default function HomePage() {
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-base font-semibold">Цель по белку</h2>
           <form className="mt-3 space-y-3" onSubmit={onSaveTarget}>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                className="w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
-                type="number"
-                placeholder="Мин"
-                value={proteinMinInput}
-                onChange={(e) => setProteinMinInput(e.target.value)}
-              />
-              <input
-                className="w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
-                type="number"
-                placeholder="Макс"
-                value={proteinMaxInput}
-                onChange={(e) => setProteinMaxInput(e.target.value)}
-              />
-            </div>
+            <input
+              className="w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
+              type="number"
+              placeholder="Цель в граммах"
+              value={proteinTargetInput}
+              onChange={(e) => setProteinTargetInput(e.target.value)}
+            />
             <button className="w-full rounded-xl bg-slate-900 px-4 py-3 text-base font-medium text-white" type="submit" disabled={loading}>
               Сохранить цель
             </button>
@@ -299,11 +364,35 @@ export default function HomePage() {
               />
             ) : (
               <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    className="rounded-xl bg-slate-200 px-4 py-3 text-base"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    Камера
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-xl bg-slate-200 px-4 py-3 text-base"
+                    onClick={() => galleryInputRef.current?.click()}
+                  >
+                    Галерея
+                  </button>
+                </div>
                 <input
+                  ref={cameraInputRef}
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
+                  className="hidden"
+                  onChange={(e) => onPickImage(e.target.files?.[0])}
+                />
+                <input
+                  ref={galleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
                   onChange={(e) => onPickImage(e.target.files?.[0])}
                 />
                 {imagePreview ? <img src={imagePreview} alt="preview" className="max-h-48 w-full rounded-xl object-cover" /> : null}
@@ -325,8 +414,66 @@ export default function HomePage() {
             {meals.length === 0 ? <li className="text-sm text-slate-500">Пока пусто</li> : null}
             {meals.map((meal, idx) => (
               <li key={meal.id || idx} className="rounded-xl bg-slate-100 p-3">
-                <p className="text-sm font-medium">{idx + 1}. {meal.meal_description}</p>
-                <p className="mt-1 text-sm text-slate-600">Белок: {Math.round(Number(meal.protein_grams || 0))} г</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    {editingMealId === meal.id ? (
+                      <div className="space-y-2">
+                        <input
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                          value={editingMealText}
+                          onChange={(e) => setEditingMealText(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white"
+                            onClick={() => onSaveMealEdit(meal.id)}
+                          >
+                            Сохранить
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg bg-slate-300 px-3 py-2 text-sm"
+                            onClick={() => {
+                              setEditingMealId(null);
+                              setEditingMealText("");
+                            }}
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium">{idx + 1}. {meal.meal_description}</p>
+                        <p className="mt-1 text-sm text-slate-600">Белок: {Math.round(Number(meal.protein_grams || 0))} г</p>
+                      </>
+                    )}
+                  </div>
+                  {editingMealId !== meal.id ? (
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="h-10 w-10 rounded-xl bg-white text-lg"
+                        onClick={() => {
+                          setEditingMealId(meal.id);
+                          setEditingMealText(meal.meal_description || "");
+                        }}
+                        aria-label="Редактировать"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        className="h-10 w-10 rounded-xl bg-white text-lg"
+                        onClick={() => onDeleteMeal(meal.id)}
+                        aria-label="Удалить"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
