@@ -13,6 +13,13 @@ export default function HomePage() {
   const [totals, setTotals] = useState({ protein_grams: 0 });
   const [target, setTarget] = useState({ protein_target: null });
   const [proteinTargetInput, setProteinTargetInput] = useState("");
+  const [historyDays, setHistoryDays] = useState([]);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyOffset, setHistoryOffset] = useState(0);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [expandedDates, setExpandedDates] = useState({});
+  const [historyMealsByDate, setHistoryMealsByDate] = useState({});
+  const [historyMealsLoading, setHistoryMealsLoading] = useState({});
 
   const [editingMealId, setEditingMealId] = useState(null);
   const [editingMealText, setEditingMealText] = useState("");
@@ -38,6 +45,53 @@ export default function HomePage() {
     };
   }
 
+  function formatDay(ymd) {
+    const [y, m, d] = String(ymd || "").split("-");
+    if (!y || !m || !d) return ymd;
+    return `${d}.${m}`;
+  }
+
+  function dayStatus(day) {
+    const protein = Number(day?.protein_grams || 0);
+    if (protein <= 0) return "—";
+    return day?.in_target ? "✅" : "⚠️";
+  }
+
+  async function loadHistoryRange(currentToken, nextOffset, append) {
+    const res = await fetch(`/api/web-history?range=7&offset=${nextOffset}`, {
+      headers: authHeaders(currentToken),
+    });
+    const data = await res.json();
+    if (res.status === 401) {
+      localStorage.removeItem("auth_token");
+      setIsAuthed(false);
+      setToken("");
+      setAuthError("Сессия истекла. Введите пароль снова");
+      return;
+    }
+    if (!res.ok) throw new Error(data?.error || "Ошибка загрузки истории");
+
+    setHistoryDays((prev) => (append ? [...prev, ...(data.days || [])] : (data.days || [])));
+    setHistoryHasMore(Boolean(data.has_more));
+    setHistoryOffset(nextOffset + 7);
+  }
+
+  async function loadHistoryDay(currentToken, date) {
+    const res = await fetch(`/api/web-history?date=${date}`, {
+      headers: authHeaders(currentToken),
+    });
+    const data = await res.json();
+    if (res.status === 401) {
+      localStorage.removeItem("auth_token");
+      setIsAuthed(false);
+      setToken("");
+      setAuthError("Сессия истекла. Введите пароль снова");
+      return null;
+    }
+    if (!res.ok) throw new Error(data?.error || "Ошибка загрузки дня");
+    return data;
+  }
+
   async function loadToday(currentToken) {
     try {
       setError("");
@@ -59,6 +113,7 @@ export default function HomePage() {
       setTotals(data.totals || { protein_grams: 0 });
       setTarget(data.target || { protein_target: null });
       setProteinTargetInput(data.target?.protein_target ?? "");
+      await loadHistoryRange(currentToken, 0, false);
     } catch (e) {
       setError(e.message || "Ошибка загрузки");
     }
@@ -105,6 +160,7 @@ export default function HomePage() {
       setTotals(data.totals || { protein_grams: 0 });
       setTarget(data.target || { protein_target: null });
       setProteinTargetInput(data.target?.protein_target ?? "");
+      await loadHistoryRange(candidate, 0, false);
       setPasswordInput("");
     } catch (e) {
       setAuthError(e.message || "Ошибка входа");
@@ -325,6 +381,42 @@ export default function HomePage() {
     }
   }
 
+  async function onLoadMoreHistory() {
+    setHistoryLoadingMore(true);
+    setError("");
+    try {
+      await loadHistoryRange(token, historyOffset, true);
+    } catch (e) {
+      setError(e.message || "Ошибка загрузки истории");
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  }
+
+  async function onToggleHistoryDay(date) {
+    const isOpen = Boolean(expandedDates[date]);
+    if (isOpen) {
+      setExpandedDates((prev) => ({ ...prev, [date]: false }));
+      return;
+    }
+
+    setExpandedDates((prev) => ({ ...prev, [date]: true }));
+    if (historyMealsByDate[date]) return;
+
+    setHistoryMealsLoading((prev) => ({ ...prev, [date]: true }));
+    setError("");
+    try {
+      const data = await loadHistoryDay(token, date);
+      if (!data) return;
+      setHistoryMealsByDate((prev) => ({ ...prev, [date]: data }));
+    } catch (e) {
+      setError(e.message || "Ошибка загрузки дня");
+      setExpandedDates((prev) => ({ ...prev, [date]: false }));
+    } finally {
+      setHistoryMealsLoading((prev) => ({ ...prev, [date]: false }));
+    }
+  }
+
   if (!authReady) {
     return <main className="min-h-screen bg-white" />;
   }
@@ -541,6 +633,62 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="rounded-2xl bg-white p-4 shadow-sm">
+          <h2 className="text-base font-semibold">История</h2>
+          <ul className="mt-3 space-y-2">
+            {historyDays.length === 0 ? <li className="text-sm text-slate-500">Нет данных</li> : null}
+            {historyDays.map((day) => (
+              <li key={day.date} className="rounded-xl bg-slate-100 p-3">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 rounded-xl text-left"
+                  onClick={() => onToggleHistoryDay(day.date)}
+                >
+                  <span className="text-sm font-medium">{formatDay(day.date)}</span>
+                  <span className="text-sm text-slate-700">{Math.round(Number(day.protein_grams || 0))} г</span>
+                  <span className="text-lg">{dayStatus(day)}</span>
+                </button>
+
+                {expandedDates[day.date] ? (
+                  <div className="mt-3 rounded-xl bg-white p-3">
+                    {historyMealsLoading[day.date] ? (
+                      <p className="text-sm text-slate-500">Загрузка...</p>
+                    ) : (
+                      <>
+                        <ul className="space-y-2">
+                          {(historyMealsByDate[day.date]?.meals || []).length === 0 ? (
+                            <li className="text-sm text-slate-500">Записей нет</li>
+                          ) : (
+                            (historyMealsByDate[day.date]?.meals || []).map((meal, idx) => (
+                              <li key={meal.id || idx} className="text-sm">
+                                {idx + 1}. {meal.meal_description} ({Math.round(Number(meal.protein_grams || 0))} г)
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                        <p className="mt-2 text-sm text-slate-600">
+                          Итого: {Math.round(Number(historyMealsByDate[day.date]?.totals?.protein_grams || 0))} г, {Math.round(Number(historyMealsByDate[day.date]?.totals?.calories || 0))} ккал
+                        </p>
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+
+          {historyHasMore ? (
+            <button
+              type="button"
+              className="mt-3 w-full rounded-xl bg-slate-200 px-4 py-3 text-base"
+              disabled={historyLoadingMore}
+              onClick={onLoadMoreHistory}
+            >
+              {historyLoadingMore ? "Загрузка..." : "Загрузить ещё 7 дней"}
+            </button>
+          ) : null}
         </section>
       </div>
     </main>
