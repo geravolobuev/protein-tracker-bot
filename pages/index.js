@@ -262,9 +262,9 @@ export default function HomePage() {
   }
 
   async function convertToJpeg(file) {
-    let processedFile = file;
+    let blob = file;
 
-    // Конвертируем HEIC/HEIF через библиотеку heic2any
+    // Конвертируем HEIC через heic2any
     const isHeic =
       file.type === "image/heic" ||
       file.type === "image/heif" ||
@@ -273,29 +273,43 @@ export default function HomePage() {
       file.name?.toLowerCase().endsWith(".heif");
 
     if (isHeic) {
-      try {
-        const heic2any = (await import("heic2any")).default;
-        const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.85 });
-        processedFile = Array.isArray(blob) ? blob[0] : blob;
-      } catch (e) {
-        throw new Error("Не удалось конвертировать HEIC: " + e.message);
-      }
+      const heic2any = (await import("heic2any")).default;
+      const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.7 });
+      blob = Array.isArray(converted) ? converted[0] : converted;
     }
 
-    // Читаем как base64
+    // Сжимаем через canvas до максимум 1200px и quality 0.7
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result || "");
-        const base64 = result.split(",")[1] || "";
-        if (!base64) {
-          reject(new Error("Не удалось прочитать фото"));
-          return;
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1200;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else { w = Math.round(w * MAX / h); h = MAX; }
         }
-        resolve(base64);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob((result) => {
+          if (!result) { reject(new Error("Не удалось сжать фото")); return; }
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = String(reader.result || "").split(",")[1] || "";
+            if (!base64) { reject(new Error("Не удалось прочитать фото")); return; }
+            resolve(base64);
+          };
+          reader.onerror = () => reject(new Error("Ошибка чтения"));
+          reader.readAsDataURL(result);
+        }, "image/jpeg", 0.7);
       };
-      reader.onerror = () => reject(new Error("Не удалось прочитать фото"));
-      reader.readAsDataURL(processedFile);
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Не удалось открыть фото")); };
+      img.src = url;
     });
   }
 
