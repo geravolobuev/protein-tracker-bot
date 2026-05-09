@@ -465,7 +465,7 @@ export default function HomePage() {
         </section>
 
         <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <div className="rounded-xl bg-slate-100 p-3">
               <p className="text-xs text-slate-500">Калории</p>
               <p className="mt-1 text-sm font-semibold">{Math.round(Number(totals?.calories || 0))} ккал</p>
@@ -477,6 +477,10 @@ export default function HomePage() {
             <div className="rounded-xl bg-slate-100 p-3">
               <p className="text-xs text-slate-500">Углеводы</p>
               <p className="mt-1 text-sm font-semibold">{Math.round(Number(totals?.carb_grams || 0))} г</p>
+            </div>
+            <div className="rounded-xl bg-slate-100 p-3">
+              <p className="text-xs text-slate-500">Клетчатка</p>
+              <p className="mt-1 text-sm font-semibold">{Math.round(Number(totals?.fiber_grams || 0))} г</p>
             </div>
           </div>
         </section>
