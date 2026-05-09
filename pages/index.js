@@ -465,6 +465,23 @@ export default function HomePage() {
         </section>
 
         <section className="rounded-2xl bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-slate-100 p-3">
+              <p className="text-xs text-slate-500">Калории</p>
+              <p className="mt-1 text-sm font-semibold">{Math.round(Number(totals?.calories || 0))} ккал</p>
+            </div>
+            <div className="rounded-xl bg-slate-100 p-3">
+              <p className="text-xs text-slate-500">Жиры</p>
+              <p className="mt-1 text-sm font-semibold">{Math.round(Number(totals?.fat_grams || 0))} г</p>
+            </div>
+            <div className="rounded-xl bg-slate-100 p-3">
+              <p className="text-xs text-slate-500">Углеводы</p>
+              <p className="mt-1 text-sm font-semibold">{Math.round(Number(totals?.carb_grams || 0))} г</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-base font-semibold">Цель по белку</h2>
           <form className="mt-3 space-y-3" onSubmit={onSaveTarget}>
             <input

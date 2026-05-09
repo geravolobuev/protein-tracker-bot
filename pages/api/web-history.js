@@ -128,7 +128,8 @@ export default async function handler(req, res) {
     if (range === "7") {
       const safeOffset = Number.isFinite(offset) && offset >= 0 ? Math.floor(offset) : 0;
       const todayYmd = dateInTz(new Date(), timezone);
-      const startYmd = shiftYmd(todayYmd, -safeOffset);
+      const baseYmd = shiftYmd(todayYmd, -1);
+      const startYmd = shiftYmd(baseYmd, -safeOffset);
       const endYmd = shiftYmd(startYmd, -6);
 
       const { startIso: oldestStartIso } = dayBoundsByYmd(endYmd, timezone);
