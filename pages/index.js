@@ -29,14 +29,23 @@ export default function HomePage() {
   const [token, setToken] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceHint, setVoiceHint] = useState("");
 
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const speechRecognitionRef = useRef(null);
+  const textRef = useRef("");
 
   const progressPct = useMemo(() => {
     if (!target?.protein_target) return 0;
     return Math.max(0, Math.min(100, (Number(totals?.protein_grams || 0) / Number(target.protein_target)) * 100));
   }, [totals, target]);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
 
   function authHeaders(currentToken, includeJson = false) {
     return {
@@ -132,6 +141,73 @@ export default function HomePage() {
     loadToday(stored);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+      return undefined;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "ru-RU";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setVoiceHint("Слушаю...");
+      setError("");
+    };
+
+    recognition.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const transcript = event.results[index][0]?.transcript || "";
+        if (event.results[index].isFinal) finalText += transcript;
+        else interimText += transcript;
+      }
+
+      const combined = `${textRef.current.trim()} ${finalText}`.trim();
+      if (combined) setText(combined);
+      setVoiceHint(interimText ? `Слушаю: ${interimText}` : finalText ? "Распознано" : "Слушаю...");
+    };
+
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      if (event.error === "not-allowed") {
+        setError("Нет доступа к микрофону");
+        return;
+      }
+      if (event.error === "no-speech") {
+        setVoiceHint("Речь не распознана, попробуй еще раз");
+        return;
+      }
+      setError("Не удалось распознать голос");
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      setVoiceHint((current) => (current === "Слушаю..." ? "" : current));
+    };
+
+    speechRecognitionRef.current = recognition;
+    setSpeechSupported(true);
+
+    return () => {
+      recognition.onstart = null;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      recognition.stop();
+    };
+  }, []);
+
   async function onLogin(e) {
     e.preventDefault();
     const candidate = passwordInput.trim();
@@ -177,10 +253,11 @@ export default function HomePage() {
 
     try {
       const payload = mode === "text"
+        || mode === "voice"
         ? { type: "text", content: text.trim() }
         : { type: "image", content: imageBase64, caption: imageCaption.trim() };
 
-      if (!payload.content) throw new Error(mode === "text" ? "Введите описание блюда" : "Загрузите фото");
+      if (!payload.content) throw new Error(mode === "image" ? "Загрузите фото" : "Введите описание блюда");
 
       const res = await fetch("/api/web-log", {
         method: "POST",
@@ -204,6 +281,7 @@ export default function HomePage() {
       setImageBase64("");
       setImagePreview("");
       setImageCaption("");
+      setVoiceHint("");
       await loadToday(token);
     } catch (e) {
       setError(e.message || "Ошибка записи");
@@ -381,6 +459,29 @@ export default function HomePage() {
     }
   }
 
+  function onToggleVoice() {
+    if (!speechSupported || !speechRecognitionRef.current) {
+      setError("Голосовой ввод не поддерживается в этом браузере");
+      return;
+    }
+
+    if (isListening) {
+      speechRecognitionRef.current.stop();
+      return;
+    }
+
+    setMode("voice");
+    setVoiceHint("");
+    speechRecognitionRef.current.start();
+  }
+
+  function onSelectMode(nextMode) {
+    if (nextMode !== "voice" && isListening && speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+    }
+    setMode(nextMode);
+  }
+
   async function onLoadMoreHistory() {
     setHistoryLoadingMore(true);
     setError("");
@@ -504,31 +605,54 @@ export default function HomePage() {
         <section className="rounded-2xl bg-white p-4 shadow-sm">
           <h2 className="text-base font-semibold">Добавить прием пищи</h2>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-3 grid grid-cols-3 gap-2">
             <button
               type="button"
               className={`rounded-xl px-4 py-3 text-base ${mode === "text" ? "bg-slate-900 text-white" : "bg-slate-200"}`}
-              onClick={() => setMode("text")}
+              onClick={() => onSelectMode("text")}
             >
               Текст
             </button>
             <button
               type="button"
               className={`rounded-xl px-4 py-3 text-base ${mode === "image" ? "bg-slate-900 text-white" : "bg-slate-200"}`}
-              onClick={() => setMode("image")}
+              onClick={() => onSelectMode("image")}
             >
               Фото
+            </button>
+            <button
+              type="button"
+              className={`rounded-xl px-4 py-3 text-base ${mode === "voice" ? "bg-slate-900 text-white" : "bg-slate-200"}`}
+              onClick={() => onSelectMode("voice")}
+            >
+              Голос
             </button>
           </div>
 
           <form className="mt-3 space-y-3" onSubmit={onSubmitMeal}>
-            {mode === "text" ? (
+            {mode === "text" || mode === "voice" ? (
+              <div className="space-y-3">
+                {mode === "voice" ? (
+                  <button
+                    type="button"
+                    className={`w-full rounded-xl px-4 py-3 text-base font-medium ${isListening ? "bg-red-500 text-white" : "bg-slate-900 text-white"}`}
+                    onClick={onToggleVoice}
+                  >
+                    {isListening ? "Остановить запись" : "Начать запись"}
+                  </button>
+                ) : null}
               <textarea
                 className="min-h-24 w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
-                placeholder="Например: гречка с курицей и салатом"
+                placeholder={mode === "voice" ? "Скажи, что ты съел, и текст появится здесь" : "Например: гречка с курицей и салатом"}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
               />
+                {mode === "voice" ? (
+                  <p className="text-sm text-slate-500">
+                    {speechSupported ? (voiceHint || "Можно отредактировать текст перед отправкой") : "Голосовой ввод не поддерживается в этом браузере"}
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
